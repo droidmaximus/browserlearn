@@ -17,15 +17,42 @@ export interface Skeleton {
   steps: SkeletonStep[];
 }
 
+type Scrubber = (text: string) => string;
+
+function exampleScrubber(w: Workflow): Scrubber {
+  const pairs: [string, string][] = [];
+  for (const p of w.params) {
+    if (p.secret || p.example === undefined || p.example.length < 3) continue;
+    const placeholder = `{${p.name}}`;
+    const encoded = encodeURIComponent(p.example);
+    for (const form of new Set([p.example, encoded, encoded.replace(/%20/g, "+")])) pairs.push([form, placeholder]);
+  }
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  return (text) => pairs.reduce((out, [form, placeholder]) => out.split(form).join(placeholder), text);
+}
+
+const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{16,})$/i;
+
+function generalizeIds(url: string): string {
+  const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/]*/i.exec(url)?.[0] ?? "";
+  const path = url
+    .slice(origin.length)
+    .split("/")
+    .map((seg) => (ID_SEGMENT.test(seg) ? ":id" : seg))
+    .join("/");
+  return origin + path;
+}
+
 export function buildSkeleton(w: Workflow): Skeleton {
+  const scrub = exampleScrubber(w);
   return {
-    workflowName: redactText(w.name),
+    workflowName: redactText(scrub(w.name)),
     params: w.params.map((p) => p.name),
     steps: w.steps.map((s, index) => ({
       index,
       action: s.action,
-      ...(s.locator ? { target: redactText(describeLocator(s.locator)) } : {}),
-      ...(s.url ? { url: redactText(urlPath(s.url).split("?")[0]) } : {}),
+      ...(s.locator ? { target: redactText(scrub(describeLocator(s.locator))) } : {}),
+      ...(s.url ? { url: redactText(generalizeIds(scrub(urlPath(s.url).split(/[?#]/, 1)[0]!))) } : {}),
       ...(s.param ? { param: s.param } : {}),
     })),
   };

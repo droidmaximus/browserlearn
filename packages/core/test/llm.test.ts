@@ -41,3 +41,12 @@ it("throws on HTTP errors", async () => {
   const client = openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", fetchImpl: fetchImpl as typeof fetch });
   await expect(client.complete("s", "u")).rejects.toThrow(/LLM request failed: 401/);
 });
+
+it("times out a request that never answers", async () => {
+  const fetchImpl = ((_url: string, init: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })) as unknown as typeof fetch;
+  const client = openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", timeoutMs: 20, fetchImpl });
+  await expect(client.complete("s", "u")).rejects.toThrow(/timed out after 20ms/);
+});
