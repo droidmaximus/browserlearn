@@ -4,3 +4,5 @@ docs/plans/
 AGENTS.md
 .cursor/
 .superpowers/
+node_modules/
+dist/
