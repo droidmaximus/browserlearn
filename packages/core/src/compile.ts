@@ -41,16 +41,44 @@ export function urlPath(url: string): string {
   }
 }
 
-const locatorKey = (s: SelectorCandidates): string => JSON.stringify(chooseLocators(s)[0] ?? null);
+/** Steps without a locator have no key and never share a target. */
+function targetKey(s: RawStep): string | null {
+  const locator = chooseLocators(s.selectors)[0];
+  return locator ? JSON.stringify([locator, s.framePath]) : null;
+}
 
-export function collapseSteps(steps: RawStep[]): RawStep[] {
-  const sorted = [...steps].sort((a, b) => a.seq - b.seq).filter((s) => s.action !== "scroll");
+function sameTarget(a: RawStep, b: RawStep): boolean {
+  const key = targetKey(a);
+  return key !== null && key === targetKey(b);
+}
+
+const isInput = (s: RawStep): boolean => s.action === "type" || s.action === "select";
+
+function isToggle(s: RawStep): boolean {
+  const locator = chooseLocators(s.selectors)[0];
+  return s.action === "click" && locator?.kind === "role" && (locator.role === "checkbox" || locator.role === "switch");
+}
+
+interface Segmented {
+  step: RawStep;
+  segment: number;
+}
+
+/** A page segment is a run of steps on one URL path; every navigate starts a new one. */
+function withSegments(steps: RawStep[]): Segmented[] {
+  let segment = 0;
+  return steps.map((step, i) => {
+    const prev = steps[i - 1];
+    if (prev && (step.action === "navigate" || urlPath(step.url) !== urlPath(prev.url))) segment++;
+    return { step, segment };
+  });
+}
+
+function collapseAdjacent(steps: RawStep[]): RawStep[] {
   const out: RawStep[] = [];
-  for (const s of sorted) {
+  for (const s of steps) {
     const prev = out[out.length - 1];
-    const sameTarget = prev !== undefined && locatorKey(prev.selectors) === locatorKey(s.selectors);
-    const isInput = s.action === "type" || s.action === "select";
-    if (prev && sameTarget && isInput && (prev.action === s.action || prev.action === "click")) {
+    if (prev && isInput(s) && sameTarget(prev, s) && (prev.action === s.action || prev.action === "click")) {
       out[out.length - 1] = s;
       continue;
     }
@@ -58,6 +86,54 @@ export function collapseSteps(steps: RawStep[]): RawStep[] {
     out.push(s);
   }
   return out;
+}
+
+/** A later input into the same field on the same page overwrites the earlier step's value in place. */
+function mergeRepeatedInputs(items: Segmented[]): Segmented[] {
+  const out: Segmented[] = [];
+  for (const item of items) {
+    const s = item.step;
+    const earlier = isInput(s)
+      ? out.find((o) => o.segment === item.segment && o.step.action === s.action && sameTarget(o.step, s))
+      : undefined;
+    if (!earlier) {
+      out.push(item);
+      continue;
+    }
+    const { value: _v, isPassword: _p, ...rest } = earlier.step;
+    earlier.step = {
+      ...rest,
+      ...(s.value !== undefined ? { value: s.value } : {}),
+      ...(s.isPassword !== undefined ? { isPassword: s.isPassword } : {}),
+    };
+  }
+  return out;
+}
+
+/** Checkbox/switch clicks on one page: an even count cancels out, an odd count is one click. */
+function dropCancelledToggles(items: Segmented[]): Segmented[] {
+  const groups = new Map<string, Segmented[]>();
+  for (const item of items) {
+    if (!isToggle(item.step)) continue;
+    const key = `${item.segment}|${targetKey(item.step)}`;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  const dropped = new Set<Segmented>();
+  for (const group of groups.values()) {
+    for (const item of group.length % 2 === 0 ? group : group.slice(1)) dropped.add(item);
+  }
+  return items.filter((item) => !dropped.has(item));
+}
+
+export function collapseSteps(steps: RawStep[]): RawStep[] {
+  const sorted = [...steps].sort((a, b) => a.seq - b.seq).filter((s) => s.action !== "scroll");
+  const segmented = withSegments(collapseAdjacent(sorted));
+  return dropCancelledToggles(mergeRepeatedInputs(segmented)).map((item) => item.step);
+}
+
+/** Non-navigate steps that have no locator and so cannot be replayed. */
+export function unrunnableSteps(w: Workflow): WorkflowStep[] {
+  return w.steps.filter((s) => s.action !== "navigate" && !s.locator);
 }
 
 const VERB: Record<Exclude<WorkflowAction, "navigate">, string> = {
@@ -98,7 +174,8 @@ export function compileRecording(rec: Recording, rawSteps: RawStep[], opts: Comp
       next && (action === "navigate" || urlPath(next.url) !== urlPath(s.url)) ? { urlPath: urlPath(next.url) } : {};
 
     if (action === "navigate") {
-      out.push({ id: newId(), name: `Open ${s.url}`, action, url: s.url, fallbacks: [], framePath: s.framePath, expected });
+      const navExpected = next ? expected : { urlPath: urlPath(s.url) };
+      out.push({ id: newId(), name: `Open ${s.url}`, action, url: s.url, fallbacks: [], framePath: s.framePath, expected: navExpected });
       return;
     }
 
