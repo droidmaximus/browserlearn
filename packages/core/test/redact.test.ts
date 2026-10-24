@@ -23,6 +23,15 @@ describe("redactText", () => {
     expect(out).toContain("[REDACTED:card]");
     expect(out).not.toContain("4111");
   });
+
+  it.each(["exp 0425 4111 1111 1111 1111", "cvv 123 4111 1111 1111 1111", "card 4111 1111 1111 1111 123"])(
+    "redacts the whole digit span around a card: %s",
+    (input) => {
+      const out = redactText(input);
+      expect(out).toContain("[REDACTED:card]");
+      expect(out).not.toContain("1111");
+    },
+  );
 });
 
 describe("redactUrl", () => {
@@ -36,6 +45,14 @@ describe("redactUrl", () => {
 
   it("redacts PII hidden by percent-encoding in the path", () => {
     expect(redactUrl("https://x.com/u/4111%201111%201111%201111")).not.toContain("4111");
+  });
+
+  it("keeps encoded path segments unchanged when nothing is redacted", () => {
+    expect(redactUrl("https://x.com/a%2Fb/c%3Fd?x=1")).toBe("https://x.com/a%2Fb/c%3Fd?x=1");
+  });
+
+  it("keeps malformed escapes in the path unchanged", () => {
+    expect(redactUrl("https://x.com/%E0%A4%A")).toBe("https://x.com/%E0%A4%A");
   });
 
   it("drops query and fragment from unparseable URLs", () => {
@@ -88,6 +105,23 @@ describe("redactStep", () => {
   it("masks a password value everywhere it appears in the step", () => {
     const out = redactStep(step({ value: "hunter2", isPassword: true, axSnippet: "textbox 'Password' value 'hunter2'" }));
     expect(JSON.stringify(out)).not.toContain("hunter2");
+  });
+
+  it("does not literal-mask short values inside selectors", () => {
+    const out = redactStep(step({ value: "a", isPassword: true, selectors: { css: "[name='a']" } }));
+    expect(out.selectors.css).toBe("[name='a']");
+  });
+
+  it("masks a field-rule value inside the step URL", () => {
+    const out = redactStep(
+      step({
+        value: "ACC-998877",
+        url: "https://app.example.com/s?acct=ACC-998877",
+        selectors: { role: "textbox", name: "Account number" },
+      }),
+      [{ domain: "example.com", field: "account" }],
+    );
+    expect(out.url).not.toContain("ACC-998877");
   });
 
   it("matches rule domains case-insensitively", () => {
