@@ -85,6 +85,30 @@ describe("collapseSteps", () => {
     const odd = [raw(1, { selectors: agree }), raw(2, { selectors: agree }), raw(3, { selectors: agree })];
     expect(collapseSteps(odd).map((s) => s.seq)).toEqual([1]);
   });
+
+  it("detects toggles by the step's role even when a test id is the best locator", () => {
+    const box = { testId: "agree", role: "checkbox", name: "Agree" };
+    const steps = [raw(1, { selectors: box }), raw(2, { action: "type", selectors: B, value: "y" }), raw(3, { selectors: box })];
+    expect(collapseSteps(steps).map((s) => s.seq)).toEqual([2]);
+  });
+
+  it("keeps toggles of the same checkbox on different pages", () => {
+    const steps = [raw(1, { selectors: agree }), raw(2, { selectors: agree, url: "https://a.test/other" })];
+    expect(collapseSteps(steps).map((s) => s.seq)).toEqual([1, 2]);
+  });
+
+  it("does not fold retypes across a click", () => {
+    const search = { role: "searchbox", name: "Search" };
+    const go = { role: "button", name: "Search" };
+    const steps = [
+      raw(1, { action: "type", selectors: search, value: "a" }),
+      raw(2, { selectors: go }),
+      raw(3, { action: "type", selectors: search, value: "b" }),
+      raw(4, { selectors: go }),
+    ];
+    expect(collapseSteps(steps).map((s) => s.seq)).toEqual([1, 2, 3, 4]);
+    expect(compile(steps).params).toHaveLength(2);
+  });
 });
 
 describe("unrunnableSteps", () => {

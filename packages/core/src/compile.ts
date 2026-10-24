@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  ExpectedState,
   Locator,
   ParamDef,
   RawStep,
@@ -54,10 +55,11 @@ function sameTarget(a: RawStep, b: RawStep): boolean {
 
 const isInput = (s: RawStep): boolean => s.action === "type" || s.action === "select";
 
-function isToggle(s: RawStep): boolean {
-  const locator = chooseLocators(s.selectors)[0];
-  return s.action === "click" && locator?.kind === "role" && (locator.role === "checkbox" || locator.role === "switch");
-}
+const isToggle = (s: RawStep): boolean =>
+  s.action === "click" && (s.selectors.role === "checkbox" || s.selectors.role === "switch");
+
+/** Clicks and submits may act on the typed value, so a later retype must not fold across them. */
+const isFoldBarrier = (s: RawStep): boolean => s.action === "submit" || (s.action === "click" && !isToggle(s));
 
 interface Segmented {
   step: RawStep;
@@ -88,14 +90,24 @@ function collapseAdjacent(steps: RawStep[]): RawStep[] {
   return out;
 }
 
-/** A later input into the same field on the same page overwrites the earlier step's value in place. */
+function findFoldTarget(out: Segmented[], item: Segmented): Segmented | undefined {
+  for (let i = out.length - 1; i >= 0; i--) {
+    const o = out[i]!;
+    if (o.segment !== item.segment || isFoldBarrier(o.step)) return undefined;
+    if (o.step.action === item.step.action && sameTarget(o.step, item.step)) return o;
+  }
+  return undefined;
+}
+
+/**
+ * A later input into the same field on the same page overwrites the earlier step's value in place,
+ * unless a click or submit lies between them.
+ */
 function mergeRepeatedInputs(items: Segmented[]): Segmented[] {
   const out: Segmented[] = [];
   for (const item of items) {
     const s = item.step;
-    const earlier = isInput(s)
-      ? out.find((o) => o.segment === item.segment && o.step.action === s.action && sameTarget(o.step, s))
-      : undefined;
+    const earlier = isInput(s) ? findFoldTarget(out, item) : undefined;
     if (!earlier) {
       out.push(item);
       continue;
@@ -170,12 +182,12 @@ export function compileRecording(rec: Recording, rawSteps: RawStep[], opts: Comp
   steps.forEach((s, i) => {
     const next = steps[i + 1];
     const action = s.action as WorkflowAction;
-    const expected =
-      next && (action === "navigate" || urlPath(next.url) !== urlPath(s.url)) ? { urlPath: urlPath(next.url) } : {};
+    let expected: ExpectedState = {};
+    if (next && (action === "navigate" || urlPath(next.url) !== urlPath(s.url))) expected = { urlPath: urlPath(next.url) };
+    else if (!next && action === "navigate") expected = { urlPath: urlPath(s.url) };
 
     if (action === "navigate") {
-      const navExpected = next ? expected : { urlPath: urlPath(s.url) };
-      out.push({ id: newId(), name: `Open ${s.url}`, action, url: s.url, fallbacks: [], framePath: s.framePath, expected: navExpected });
+      out.push({ id: newId(), name: `Open ${s.url}`, action, url: s.url, fallbacks: [], framePath: s.framePath, expected });
       return;
     }
 
