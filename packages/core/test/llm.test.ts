@@ -42,6 +42,12 @@ it("throws on HTTP errors", async () => {
   await expect(client.complete("s", "u")).rejects.toThrow(/LLM request failed: 401/);
 });
 
+it.each([-1, Number.NaN])("rejects timeoutMs %s at construction", (timeoutMs) => {
+  expect(() => openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", timeoutMs })).toThrow(
+    "timeoutMs must be a positive finite number",
+  );
+});
+
 it("times out a request that never answers", async () => {
   const fetchImpl = ((_url: string, init: RequestInit) =>
     new Promise((_resolve, reject) => {

@@ -20,25 +20,42 @@ export interface Skeleton {
 type Scrubber = (text: string) => string;
 
 function exampleScrubber(w: Workflow): Scrubber {
-  const pairs: [string, string][] = [];
+  const pairs: [RegExp, string][] = [];
   for (const p of w.params) {
     if (p.secret || p.example === undefined || p.example.length < 3) continue;
-    const placeholder = `{${p.name}}`;
     const encoded = encodeURIComponent(p.example);
-    for (const form of new Set([p.example, encoded, encoded.replace(/%20/g, "+")])) pairs.push([form, placeholder]);
+    for (const form of new Set([p.example, encoded, encoded.replace(/%20/g, "+")])) {
+      pairs.push([new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), `{${p.name}}`]);
+    }
   }
-  pairs.sort((a, b) => b[0].length - a[0].length);
-  return (text) => pairs.reduce((out, [form, placeholder]) => out.split(form).join(placeholder), text);
+  pairs.sort((a, b) => b[0].source.length - a[0].source.length);
+  return (text) => pairs.reduce((out, [pattern, placeholder]) => out.replace(pattern, () => placeholder), text);
 }
 
 const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{16,})$/i;
 
-function generalizeIds(url: string): string {
-  const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/]*/i.exec(url)?.[0] ?? "";
-  const path = url
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment.replace(/\+/g, " "));
+  } catch {
+    return segment;
+  }
+}
+
+/** Origin is kept verbatim; path segments are decoded, scrubbed, ID-generalized and redacted. */
+function skeletonUrl(url: string, scrub: Scrubber): string {
+  const base = urlPath(url).split(/[?#]/, 1)[0]!;
+  const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/]*/i.exec(base)?.[0] ?? "";
+  const path = base
     .slice(origin.length)
     .split("/")
-    .map((seg) => (ID_SEGMENT.test(seg) ? ":id" : seg))
+    .map((segment) => {
+      const decoded = decodeSegment(segment);
+      const scrubbed = scrub(decoded);
+      if (ID_SEGMENT.test(scrubbed)) return ":id";
+      const redacted = redactText(scrubbed);
+      return redacted === decoded ? segment : encodeURIComponent(redacted);
+    })
     .join("/");
   return origin + path;
 }
@@ -52,7 +69,7 @@ export function buildSkeleton(w: Workflow): Skeleton {
       index,
       action: s.action,
       ...(s.locator ? { target: redactText(scrub(describeLocator(s.locator))) } : {}),
-      ...(s.url ? { url: redactText(generalizeIds(scrub(urlPath(s.url).split(/[?#]/, 1)[0]!))) } : {}),
+      ...(s.url ? { url: skeletonUrl(s.url, scrub) } : {}),
       ...(s.param ? { param: s.param } : {}),
     })),
   };

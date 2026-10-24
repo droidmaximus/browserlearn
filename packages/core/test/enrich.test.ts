@@ -63,6 +63,38 @@ describe("buildSkeleton / payload", () => {
     expect(user).toContain("{param_1}");
   });
 
+  const navigateTo = (url: string, i = 0) =>
+    ({ id: `u${i}`, name: "go", action: "navigate", url, fallbacks: [], framePath: [], expected: {} }) as const;
+
+  it.each(["Smith & Co", "Acme, Inc."])("scrubs the example %j from URL paths in every form", (example) => {
+    const w = compiledFixture();
+    w.params[0].example = example;
+    w.steps = [
+      navigateTo(`https://app.test/c/${example}/x`, 0),
+      navigateTo(`https://app.test/c/${encodeURIComponent(example)}/x`, 1),
+      navigateTo(`https://app.test/c/${encodeURIComponent(example).replace(/%20/g, "+")}/x`, 2),
+    ];
+    const { user } = buildEnrichmentPayload(w);
+    for (const word of ["Smith", "Acme", "Inc"]) expect(user).not.toContain(word);
+    expect(buildSkeleton(w).steps.every((s) => s.url!.startsWith("https://app.test/c/") && s.url!.endsWith("/x"))).toBe(true);
+  });
+
+  it("never rewrites the URL origin", () => {
+    const w = compiledFixture();
+    w.params[0].example = "app";
+    w.steps = [navigateTo("https://app.test/app/x")];
+    expect(buildSkeleton(w).steps[0].url).toBe("https://app.test/%7Bparam_1%7D/x");
+  });
+
+  it("matches examples case-insensitively", () => {
+    const w = compiledFixture();
+    w.params[0].example = "acme corp";
+    w.steps.push({ id: "x1", name: "pick", action: "click", locator: { kind: "role", role: "option", name: "Acme Corp" }, fallbacks: [], framePath: [], expected: {} });
+    const { user } = buildEnrichmentPayload(w);
+    expect(user.toLowerCase()).not.toContain("acme");
+    expect(user).toContain('option \\"{param_1}\\"');
+  });
+
   it("generalizes IDs in URL paths and drops query and fragment", () => {
     const w = compiledFixture();
     const urls = [

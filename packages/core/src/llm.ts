@@ -15,6 +15,7 @@ export function openAiCompatibleClient(opts: OpenAiCompatibleOptions): LlmClient
   const doFetch = opts.fetchImpl ?? fetch;
   const url = `${opts.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const timeoutMs = opts.timeoutMs ?? 30000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("timeoutMs must be a positive finite number");
   return {
     async complete(system, user) {
       const headers: Record<string, string> = { "content-type": "application/json" };
