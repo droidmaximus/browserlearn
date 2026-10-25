@@ -1,4 +1,5 @@
 import { exportCmd, listCmd, pairCmd } from "./commands/basic.js";
+import { runCmd } from "./commands/run.js";
 import { errorMessage } from "./errors.js";
 import { type Io, processIo } from "./io.js";
 import { VERSION } from "./version.js";
@@ -21,6 +22,7 @@ const COMMANDS: Record<string, Command> = {
   pair: pairCmd,
   list: listCmd,
   export: exportCmd,
+  run: runCmd,
   version: async (_args, io) => {
     io.stdout(`${VERSION}\n`);
     return 0;
