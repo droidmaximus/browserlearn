@@ -8,7 +8,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   exports: Record<string, { types: string; default: string }>;
 };
 
-const SUBPATHS = [".", "./types", "./schema", "./redact", "./compile", "./enrich", "./llm", "./license", "./export", "./store", "./public"];
+const SUBPATHS = [".", "./types", "./schema", "./redact", "./compile", "./enrich", "./llm", "./license", "./export", "./store", "./public", "./resolve"];
 
 const sourceOf = (distFile: string): string => join(root, distFile.replace(/^\.\/dist\//, "src/").replace(/\.js$/, ".ts"));
 

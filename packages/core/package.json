@@ -19,7 +19,8 @@
     "./license": { "types": "./dist/license.d.ts", "default": "./dist/license.js" },
     "./export": { "types": "./dist/export/index.d.ts", "default": "./dist/export/index.js" },
     "./store": { "types": "./dist/store.d.ts", "default": "./dist/store.js" },
-    "./public": { "types": "./dist/public.d.ts", "default": "./dist/public.js" }
+    "./public": { "types": "./dist/public.d.ts", "default": "./dist/public.js" },
+    "./resolve": { "types": "./dist/resolve.d.ts", "default": "./dist/resolve.js" }
   },
   "files": ["dist"],
   "scripts": {
