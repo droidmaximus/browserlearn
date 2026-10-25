@@ -159,7 +159,7 @@ function pickRawStep(input: unknown): RawStep {
 }
 
 /** Validates and redacts a step received from the extension; throws on any malformed field. */
-export function redactStep(input: RawStep, rules: FieldRule[] = []): RawStep {
+export function redactStep(input: unknown, rules: FieldRule[] = []): RawStep {
   const step = pickRawStep(input);
   const host = hostOf(step.url);
   const ruleHit = rules.some((r) => {
@@ -191,8 +191,7 @@ export function redactStep(input: RawStep, rules: FieldRule[] = []): RawStep {
 }
 
 /** Validates a recording received from the extension and redacts its name and start URL; throws on malformed input. */
-export function redactRecording(recording: Recording): Recording {
-  const input: unknown = recording;
+export function redactRecording(input: unknown): Recording {
   if (!isObject(input)) invalid("recording", "recording");
   const { id, name, startUrl, startedAt, endedAt, status } = input;
   if (typeof id !== "string") invalid("id", "recording");
@@ -211,9 +210,9 @@ export function redactRecording(recording: Recording): Recording {
   };
 }
 
-export function safeRedactStep(step: RawStep, rules: FieldRule[] = []): RawStep | null {
+export function safeRedactStep(input: unknown, rules: FieldRule[] = []): RawStep | null {
   try {
-    return redactStep(step, rules);
+    return redactStep(input, rules);
   } catch {
     return null;
   }

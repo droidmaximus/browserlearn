@@ -9,6 +9,7 @@ import type {
   WorkflowAction,
   WorkflowStep,
 } from "./types.js";
+import { redactRecording } from "./redact.js";
 
 export function chooseLocators(s: SelectorCandidates): Locator[] {
   const out: Locator[] = [];
@@ -176,7 +177,8 @@ export interface CompileOptions {
   newId?: () => string;
 }
 
-export function compileRecording(rec: Recording, rawSteps: RawStep[], opts: CompileOptions): Workflow {
+export function compileRecording(input: Recording, rawSteps: RawStep[], opts: CompileOptions): Workflow {
+  const rec = redactRecording(input);
   const newId = opts.newId ?? (() => globalThis.crypto.randomUUID());
   const workflowId = newId();
   const steps = collapseSteps(rawSteps);

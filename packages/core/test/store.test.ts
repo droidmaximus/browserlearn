@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Store } from "../src/store.js";
-import type { RawStep } from "../src/types.js";
+import type { RawStep, Workflow } from "../src/types.js";
 import { compiledFixture, fixtureRecording, fixtureSteps } from "./fixtures.js";
 
 let store: Store;
@@ -36,7 +36,7 @@ describe("redaction before disk", () => {
   it("redacts steps before storing them", () => {
     store.createRecording(openRecording);
     const wire = { ...fixtureSteps[2]!, value: "bob@x.com", outerHTML: "<input value='bob@x.com'>" } as RawStep;
-    const stored = store.ingestStep("rec1", wire);
+    const stored = store.ingestStep("rec1", wire).step;
     expect(stored).toEqual({ ...fixtureSteps[2], value: "[REDACTED:email]" });
     expect(store.listSteps("rec1")).toEqual([stored]);
   });
@@ -49,7 +49,7 @@ describe("redaction before disk", () => {
 
   it("drops invalid steps without storing them", () => {
     store.createRecording(openRecording);
-    expect(store.ingestStep("rec1", { ...fixtureSteps[0]!, action: "hover" } as unknown as RawStep)).toBeNull();
+    expect(store.ingestStep("rec1", { ...fixtureSteps[0]!, action: "hover" })).toEqual({ status: "dropped" });
     expect(store.listSteps("rec1")).toEqual([]);
   });
 
@@ -182,4 +182,87 @@ it("stores a single license", () => {
   expect(store.getLicense()?.token).toBe("t2");
   store.clearLicense();
   expect(store.getLicense()).toBeUndefined();
+});
+
+describe("store carry-overs", () => {
+  const rec = (id: string, startedAt = 1) => ({ id, name: "R", startUrl: "https://app.test/", startedAt, status: "recording" as const });
+  const step = (seq: number, extra: Record<string, unknown> = {}) => ({
+    seq,
+    action: "click",
+    selectors: { css: "#a" },
+    axSnippet: "",
+    url: "https://app.test/",
+    framePath: [],
+    ts: 0,
+    ...extra,
+  });
+  const wf = (id: string, name: string, updatedAt: number, sourceRecordingId = "r1"): Workflow => ({
+    id,
+    name,
+    description: "",
+    version: 1,
+    params: [],
+    steps: [],
+    sourceRecordingId,
+    createdAt: updatedAt,
+    updatedAt,
+  });
+  let s: Store;
+  beforeEach(() => {
+    s = new Store(":memory:");
+  });
+
+  it("reports stored, duplicate and dropped steps", () => {
+    s.createRecording(rec("r1"));
+    expect(s.ingestStep("r1", step(1)).status).toBe("stored");
+    expect(s.ingestStep("r1", step(1, { axSnippet: "changed" })).status).toBe("duplicate");
+    expect(s.listSteps("r1")[0]!.axSnippet).toBe("");
+    expect(s.ingestStep("r1", { seq: 2, action: "hover" })).toEqual({ status: "dropped" });
+  });
+
+  it("refuses steps for an unknown recording", () => {
+    expect(() => s.ingestStep("nope", step(1))).toThrow(/FOREIGN KEY/);
+  });
+
+  it("lists equal timestamps newest-inserted first", () => {
+    s.createRecording(rec("a", 5));
+    s.createRecording(rec("b", 5));
+    expect(s.listRecordings().map((r) => r.id)).toEqual(["b", "a"]);
+  });
+
+  it("finds the most recently updated workflow by name", () => {
+    s.saveWorkflow(wf("w1", "Same", 1));
+    s.saveWorkflow(wf("w2", "Same", 2));
+    expect(s.getWorkflowByName("Same")!.id).toBe("w2");
+  });
+
+  it("deletes recordings with their steps, and workflows with their runs", () => {
+    s.createRecording(rec("r1"));
+    s.ingestStep("r1", step(1));
+    expect(s.deleteRecording("r1")).toBe(true);
+    expect(s.listSteps("r1")).toEqual([]);
+    expect(s.deleteRecording("r1")).toBe(false);
+    s.saveWorkflow(wf("w1", "W", 1));
+    s.saveRun({ id: "run1", workflowId: "w1", params: {}, status: "succeeded", log: [], startedAt: 1 });
+    expect(s.getRun("run1")!.status).toBe("succeeded");
+    expect(s.deleteWorkflow("w1")).toBe(true);
+    expect(s.getRun("run1")).toBeUndefined();
+    expect(s.deleteWorkflow("w1")).toBe(false);
+  });
+
+  it("makes workflow names unique", () => {
+    expect(s.uniqueWorkflowName("W")).toBe("W");
+    s.saveWorkflow(wf("w1", "W", 1));
+    expect(s.uniqueWorkflowName("W")).toBe("W (2)");
+    expect(s.uniqueWorkflowName("W", "w1")).toBe("W");
+    s.saveWorkflow(wf("w2", "W (2)", 2));
+    expect(s.uniqueWorkflowName("W")).toBe("W (3)");
+  });
+
+  it("finds the latest workflow compiled from a recording", () => {
+    s.saveWorkflow(wf("w1", "A", 1, "r9"));
+    s.saveWorkflow(wf("w2", "B", 2, "r9"));
+    expect(s.findWorkflowBySource("r9")!.id).toBe("w2");
+    expect(s.findWorkflowBySource("other")).toBeUndefined();
+  });
 });

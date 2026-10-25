@@ -20,7 +20,8 @@
     "./export": { "types": "./dist/export/index.d.ts", "default": "./dist/export/index.js" },
     "./store": { "types": "./dist/store.d.ts", "default": "./dist/store.js" },
     "./public": { "types": "./dist/public.d.ts", "default": "./dist/public.js" },
-    "./resolve": { "types": "./dist/resolve.d.ts", "default": "./dist/resolve.js" }
+    "./resolve": { "types": "./dist/resolve.d.ts", "default": "./dist/resolve.js" },
+    "./protocol": { "types": "./dist/protocol.d.ts", "default": "./dist/protocol.js" }
   },
   "files": ["dist"],
   "scripts": {

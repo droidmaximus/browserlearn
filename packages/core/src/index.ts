@@ -8,3 +8,4 @@ export * from "./enrich.js";
 export * from "./export/index.js";
 export * from "./public.js";
 export * from "./resolve.js";
+export * from "./protocol.js";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chooseLocators, collapseSteps, compileRecording, unrunnableSteps, urlPath } from "../src/compile.js";
 import type { RawStep, Recording } from "../src/types.js";
-import { compiledFixture, fixtureSteps } from "./fixtures.js";
+import { compiledFixture, fixtureRecording, fixtureSteps } from "./fixtures.js";
 
 const raw = (seq: number, over: Partial<RawStep>): RawStep => ({
   seq,
@@ -267,4 +267,15 @@ describe("compileRecording", () => {
       ],
     });
   });
+});
+
+it("redacts the recording it is given", () => {
+  const w = compileRecording(
+    { ...fixtureRecording, name: "Invoice for bob@x.com", startUrl: "https://app.test/invoices?token=SECRET123" },
+    fixtureSteps,
+    { now: 0 },
+  );
+  const text = JSON.stringify(w);
+  expect(text).not.toContain("SECRET123");
+  expect(text).not.toContain("bob@x.com");
 });

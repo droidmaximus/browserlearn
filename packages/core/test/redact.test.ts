@@ -273,3 +273,7 @@ describe("safeRedactStep", () => {
     expect(safeRedactStep(broken)).toBeNull();
   });
 });
+
+it("re-encodes only the path segments it redacts", () => {
+  expect(redactUrl("https://app.test/users/bob%40x.com/caf%C3%A9")).toBe("https://app.test/users/%5BREDACTED%3Aemail%5D/caf%C3%A9");
+});

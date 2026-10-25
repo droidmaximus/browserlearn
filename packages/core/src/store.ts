@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { IngestStatus } from "./protocol.js";
 import { type FieldRule, redactRecording, safeRedactStep } from "./redact.js";
 import type { RawStep, Recording, Run, StoredLicense, Workflow } from "./types.js";
 
@@ -64,11 +65,15 @@ export class Store {
     this.db.close();
   }
 
-  /** Redacts the recording, then stores it. Throws on malformed input. */
-  createRecording(raw: Recording): Recording {
+  /** Validates and redacts the recording, then stores it. Throws on malformed input. */
+  createRecording(raw: unknown): Recording {
     const r = redactRecording(raw);
     this.db.prepare("INSERT INTO recordings (id, started_at, data) VALUES (?, ?, ?)").run(r.id, r.startedAt, JSON.stringify(r));
     return r;
+  }
+
+  deleteRecording(id: string): boolean {
+    return Number(this.db.prepare("DELETE FROM recordings WHERE id = ?").run(id).changes) > 0;
   }
 
   getRecording(id: string): Recording | undefined {
@@ -88,16 +93,16 @@ export class Store {
   }
 
   /**
-   * Redacts the step, then stores it. Returns null, storing nothing, when redaction rejects the step.
-   * A re-sent step with an already stored seq is ignored.
+   * Validates and redacts the step, then stores it. A step redaction rejects is dropped; a re-sent seq
+   * keeps the first stored step. Throws if the recording does not exist.
    */
-  ingestStep(recordingId: string, raw: RawStep, rules: FieldRule[] = []): RawStep | null {
+  ingestStep(recordingId: string, raw: unknown, rules: FieldRule[] = []): { status: IngestStatus; step?: RawStep } {
     const step = safeRedactStep(raw, rules);
-    if (!step) return null;
-    this.db
+    if (!step) return { status: "dropped" };
+    const { changes } = this.db
       .prepare("INSERT INTO steps (recording_id, seq, data) VALUES (?, ?, ?) ON CONFLICT (recording_id, seq) DO NOTHING")
       .run(recordingId, step.seq, JSON.stringify(step));
-    return step;
+    return { status: Number(changes) > 0 ? "stored" : "duplicate", step };
   }
 
   listSteps(recordingId: string): RawStep[] {
@@ -128,6 +133,33 @@ export class Store {
 
   listWorkflows(): Workflow[] {
     return parseAll(this.db.prepare("SELECT data FROM workflows ORDER BY updated_at DESC, rowid DESC").all());
+  }
+
+  findWorkflowBySource(recordingId: string): Workflow | undefined {
+    return parseOne(
+      this.db
+        .prepare("SELECT data FROM workflows WHERE json_extract(data, '$.sourceRecordingId') = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1")
+        .get(recordingId),
+    );
+  }
+
+  uniqueWorkflowName(name: string, exceptId?: string): string {
+    const taken = (n: string): boolean =>
+      this.db.prepare("SELECT 1 FROM workflows WHERE name = ? AND id IS NOT ? LIMIT 1").get(n, exceptId ?? null) !== undefined;
+    if (!taken(name)) return name;
+    for (let i = 2; ; i++) {
+      const candidate = `${name} (${i})`;
+      if (!taken(candidate)) return candidate;
+    }
+  }
+
+  deleteWorkflow(id: string): boolean {
+    this.db.prepare("DELETE FROM runs WHERE workflow_id = ?").run(id);
+    return Number(this.db.prepare("DELETE FROM workflows WHERE id = ?").run(id).changes) > 0;
+  }
+
+  getRun(id: string): Run | undefined {
+    return parseOne(this.db.prepare("SELECT data FROM runs WHERE id = ?").get(id));
   }
 
   saveRun(run: Run): void {
