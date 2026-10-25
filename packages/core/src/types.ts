@@ -82,6 +82,8 @@ export interface Workflow {
   sourceRecordingId: string;
   createdAt: number;
   updatedAt: number;
+  /** Let MCP clients see recorded examples of non-secret params. Off unless the user turns it on. */
+  exposeExamples?: boolean;
 }
 
 export type RunStatus = "running" | "succeeded" | "failed";

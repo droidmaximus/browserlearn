@@ -204,6 +204,20 @@ export function checkStepParams(w: Workflow): void {
   }
 }
 
+/** Params whose value is needed outside their own type/select step: inside a role name or a URL. */
+export function downstreamParams(w: Workflow): Set<string> {
+  const out = new Set<string>();
+  for (const s of w.steps) {
+    for (const l of [s.locator, ...s.fallbacks]) {
+      if (l?.kind === "role") for (const p of chunkParams(textChunks(l.name, w.params))) out.add(p);
+    }
+    for (const url of [s.url, s.expected.urlPath]) {
+      if (url) for (const p of chunkParams(urlChunks(url, w.params))) out.add(p);
+    }
+  }
+  return out;
+}
+
 export function scriptHeader(w: Workflow, importLine: string): string {
   return [
     importLine,

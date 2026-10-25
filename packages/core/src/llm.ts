@@ -36,7 +36,10 @@ export function openAiCompatibleClient(opts: OpenAiCompatibleOptions): LlmClient
             ],
           }),
         });
-        if (!res.ok) throw new Error(`LLM request failed: ${res.status}`);
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`LLM request failed: ${res.status} ${body.slice(0, 500)}`.trim());
+        }
         json = (await res.json()) as typeof json;
       } catch (err) {
         if (signal.aborted) throw new Error(`LLM request timed out after ${timeoutMs}ms`);

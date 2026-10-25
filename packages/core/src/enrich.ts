@@ -1,4 +1,5 @@
 import { describeLocator, urlPath } from "./compile.js";
+import { downstreamParams } from "./export/shared.js";
 import type { LlmClient } from "./llm.js";
 import { redactText } from "./redact.js";
 import type { Workflow } from "./types.js";
@@ -100,19 +101,39 @@ export interface Enrichment {
 
 const PARAM_NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
-export function parseEnrichment(text: string): Enrichment {
+const NAME_MAX = 80;
+const DESCRIPTION_MAX = 300;
+const STEP_NAME_MAX = 120;
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The first `{` paired with the last `}` that yields valid JSON, so trailing prose with braces is tolerated. */
+function parseJsonObject(text: string): unknown {
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("no JSON object in LLM response");
-  const v = JSON.parse(text.slice(start, end + 1)) as Enrichment;
-  if (typeof v.name !== "string" || typeof v.description !== "string" || !Array.isArray(v.steps) || !Array.isArray(v.params)) {
+  if (start >= 0) {
+    for (let end = text.lastIndexOf("}"); end > start; end = text.lastIndexOf("}", end - 1)) {
+      try {
+        return JSON.parse(text.slice(start, end + 1));
+      } catch {
+        continue;
+      }
+    }
+  }
+  throw new Error("no JSON object in LLM response");
+}
+
+export function parseEnrichment(text: string): Enrichment {
+  const v = parseJsonObject(text);
+  if (!isRecord(v) || typeof v.name !== "string" || typeof v.description !== "string" || !Array.isArray(v.steps) || !Array.isArray(v.params)) {
     throw new Error("enrichment has wrong shape");
   }
-  for (const s of v.steps) {
-    if (typeof s.index !== "number" || typeof s.name !== "string") throw new Error(`invalid step ${JSON.stringify(s)}`);
-  }
-  for (const p of v.params) {
+  const steps = v.steps.map((s: unknown) => {
+    if (!isRecord(s) || typeof s.index !== "number" || typeof s.name !== "string") throw new Error(`invalid step ${JSON.stringify(s)}`);
+    return { index: s.index, name: s.name.trim().slice(0, STEP_NAME_MAX) };
+  });
+  const params = v.params.map((p: unknown) => {
     if (
+      !isRecord(p) ||
       typeof p.from !== "string" ||
       typeof p.name !== "string" ||
       !PARAM_NAME.test(p.name) ||
@@ -121,17 +142,28 @@ export function parseEnrichment(text: string): Enrichment {
     ) {
       throw new Error(`invalid param ${JSON.stringify(p)}`);
     }
-  }
-  const names = v.params.map((p) => p.name);
+    return { from: p.from, name: p.name, description: p.description.trim().slice(0, DESCRIPTION_MAX), required: p.required };
+  });
+  const names = params.map((p) => p.name);
   if (new Set(names).size !== names.length) throw new Error("duplicate param names");
-  return v;
+  const froms = params.map((p) => p.from);
+  if (new Set(froms).size !== froms.length) throw new Error("duplicate placeholders");
+  return { name: v.name.trim().slice(0, NAME_MAX), description: v.description.trim().slice(0, DESCRIPTION_MAX), steps, params };
+}
+
+/** Params that must stay required: secrets, and params whose value is needed outside their own input step. */
+export function lockedRequiredParams(w: Workflow): Set<string> {
+  const locked = downstreamParams(w);
+  for (const p of w.params) if (p.secret) locked.add(p.name);
+  return locked;
 }
 
 export function applyEnrichment(w: Workflow, e: Enrichment): Workflow {
+  const locked = lockedRequiredParams(w);
   const rename = new Map(e.params.map((p) => [p.from, p]));
   const params = w.params.map((p) => {
     const r = rename.get(p.name);
-    return r ? { ...p, name: r.name, description: r.description, required: p.secret ? true : r.required } : p;
+    return r ? { ...p, name: r.name, description: r.description, required: locked.has(p.name) ? true : r.required } : p;
   });
   if (new Set(params.map((p) => p.name)).size !== params.length) {
     throw new Error("enrichment produced duplicate param names");
@@ -141,7 +173,7 @@ export function applyEnrichment(w: Workflow, e: Enrichment): Workflow {
     const r = s.param ? rename.get(s.param) : undefined;
     return { ...s, name: newName || s.name, ...(r ? { param: r.name } : {}) };
   });
-  return { ...w, name: e.name.trim() || w.name, description: e.description.trim(), params, steps };
+  return { ...w, name: e.name.trim() || w.name, description: e.description.trim() || w.description, params, steps };
 }
 
 export async function enrichWorkflow(

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { compileRecording } from "../src/compile.js";
-import { buildEnrichmentPayload, buildSkeleton, enrichWorkflow, parseEnrichment } from "../src/enrich.js";
+import { applyEnrichment, buildEnrichmentPayload, buildSkeleton, enrichWorkflow, lockedRequiredParams, parseEnrichment } from "../src/enrich.js";
 import { openAiCompatibleClient, type LlmClient } from "../src/llm.js";
-import type { WorkflowStep } from "../src/types.js";
+import type { Workflow, WorkflowStep } from "../src/types.js";
 import { compiledFixture } from "./fixtures.js";
 
 const hangingFetch = ((_url: string, init: RequestInit) =>
@@ -225,5 +225,83 @@ describe("parseEnrichment", () => {
 
   it("rejects text without JSON", () => {
     expect(() => parseEnrichment("sorry")).toThrow(/no JSON object/);
+  });
+});
+
+describe("parseEnrichment hardening", () => {
+  const good = {
+    name: "Create invoice",
+    description: "Creates an invoice.",
+    steps: [{ index: 0, name: "Open" }],
+    params: [{ from: "param_1", name: "customer", description: "Customer name", required: true }],
+  };
+
+  it("finds the JSON object even when prose with braces follows it", () => {
+    expect(parseEnrichment(`Sure! ${JSON.stringify(good)} Let me know {if} you need more.`).name).toBe("Create invoice");
+  });
+
+  it("rejects null steps and params with a clear error", () => {
+    expect(() => parseEnrichment(JSON.stringify({ ...good, steps: [null] }))).toThrow(/invalid step/);
+    expect(() => parseEnrichment(JSON.stringify({ ...good, params: [null] }))).toThrow(/invalid param/);
+  });
+
+  it("rejects duplicate placeholders", () => {
+    const dup = { ...good, params: [good.params[0], { ...good.params[0], name: "other" }] };
+    expect(() => parseEnrichment(JSON.stringify(dup))).toThrow(/duplicate placeholder/);
+  });
+
+  it("caps text lengths", () => {
+    const long = {
+      ...good,
+      name: "n".repeat(200),
+      description: "d".repeat(1000),
+      steps: [{ index: 0, name: "s".repeat(500) }],
+      params: [{ ...good.params[0], description: "p".repeat(1000) }],
+    };
+    const e = parseEnrichment(JSON.stringify(long));
+    expect(e.name).toHaveLength(80);
+    expect(e.description).toHaveLength(300);
+    expect(e.steps[0]!.name).toHaveLength(120);
+    expect(e.params[0]!.description).toHaveLength(300);
+  });
+});
+
+describe("applyEnrichment hardening", () => {
+  const enrichment = (required: boolean) => ({
+    name: "Create invoice",
+    description: "  ",
+    steps: [],
+    params: [{ from: "param_1", name: "customer", description: "Customer name", required }],
+  });
+
+  it("keeps the original description when the LLM returns an empty one", () => {
+    const w = { ...compiledFixture(), description: "Mine" };
+    expect(applyEnrichment(w, enrichment(true)).description).toBe("Mine");
+  });
+
+  it("lets the LLM make a param optional when nothing else needs its value", () => {
+    const out = applyEnrichment(compiledFixture(), enrichment(false));
+    expect(out.params.find((p) => p.name === "customer")!.required).toBe(false);
+  });
+
+  it("keeps a param required when a later locator or URL needs its value", () => {
+    const base = compiledFixture();
+    const w: Workflow = {
+      ...base,
+      steps: [
+        ...base.steps,
+        {
+          id: "x",
+          name: "Open customer",
+          action: "click",
+          locator: { kind: "role", role: "link", name: "Acme Corp details" },
+          fallbacks: [],
+          framePath: [],
+          expected: {},
+        },
+      ],
+    };
+    expect(lockedRequiredParams(w)).toEqual(new Set(["param_1", "param_2"]));
+    expect(applyEnrichment(w, enrichment(false)).params.find((p) => p.name === "customer")!.required).toBe(true);
   });
 });
