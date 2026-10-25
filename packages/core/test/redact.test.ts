@@ -148,6 +148,81 @@ describe("redactStep", () => {
   });
 });
 
+describe("redactStep allowlist and validation", () => {
+  it("drops fields that are not part of RawStep", () => {
+    const wire = { ...step({ value: "x" }), outerHTML: "<input value='bob@x.com' data-ssn='123-45-6789'>" };
+    const out = safeRedactStep(wire as RawStep);
+    expect(out).not.toBeNull();
+    expect(out).not.toHaveProperty("outerHTML");
+    expect(JSON.stringify(out)).not.toContain("bob@x.com");
+  });
+
+  it("drops unknown selector fields", () => {
+    const wire = step({ selectors: { role: "textbox", name: "Email", label: "bob@x.com" } as RawStep["selectors"] });
+    expect(redactStep(wire).selectors).toEqual({ role: "textbox", name: "Email" });
+  });
+
+  it("never carries screenshot paths from the wire", () => {
+    const out = redactStep(step({ screenshotBefore: "/etc/passwd", screenshotAfter: "../../x.png" }));
+    expect(out).not.toHaveProperty("screenshotBefore");
+    expect(out).not.toHaveProperty("screenshotAfter");
+  });
+
+  it("keeps every allowed field", () => {
+    const full = step({ seq: 7, value: "Acme", isPassword: false, framePath: [0, 2], ts: 42 });
+    expect(redactStep(full)).toEqual(full);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ["unknown action", { action: "hover" }],
+    ["non-integer seq", { seq: "1" }],
+    ["non-string url", { url: 5 }],
+    ["non-string axSnippet", { axSnippet: null }],
+    ["non-array framePath", { framePath: "0" }],
+    ["non-integer frame index", { framePath: [0.5] }],
+    ["non-number ts", { ts: "now" }],
+    ["non-string value", { value: 42 }],
+    ["non-boolean isPassword", { isPassword: "yes" }],
+    ["non-object selectors", { selectors: "css" }],
+    ["non-string selector", { selectors: { css: 1 } }],
+  ])("rejects a step with %s", (_label, over) => {
+    const bad = { ...step({}), ...over } as unknown as RawStep;
+    expect(() => redactStep(bad)).toThrow();
+    expect(safeRedactStep(bad)).toBeNull();
+  });
+
+  it.each([null, "step", 3])("rejects non-object step %j", (bad) => {
+    expect(safeRedactStep(bad as unknown as RawStep)).toBeNull();
+  });
+});
+
+describe("masked values in step URLs", () => {
+  const pw = (value: string, url: string) => redactStep(step({ value, isPassword: true, url })).url;
+
+  it("masks whole path segments and never touches the host", () => {
+    expect(pw("pass", "https://pass.test/passport")).toBe("https://pass.test/%5BREDACTED%3Apassword%5D");
+  });
+
+  it("masks whole query values", () => {
+    expect(pw("hunter22", "https://a.test/s?q=xhunter22y&page=2")).toBe(
+      "https://a.test/s?q=%5BREDACTED%3Apassword%5D&page=2",
+    );
+  });
+
+  it("matches +-encoded spaces in the query and the path", () => {
+    const out = pw("hunter two", "https://a.test/u/hunter+two/x?q=hunter+two");
+    expect(out).toBe("https://a.test/u/%5BREDACTED%3Apassword%5D/x?q=%5BREDACTED%3Apassword%5D");
+  });
+
+  it("matches percent-encoded values in path segments", () => {
+    expect(pw("hunter two", "https://a.test/u/hunter%20two")).toBe("https://a.test/u/%5BREDACTED%3Apassword%5D");
+  });
+
+  it("masks the value in unparseable URLs", () => {
+    expect(pw("hunter22", "/u/hunter22?x=1")).toBe("/u/[REDACTED:password]");
+  });
+});
+
 describe("safeRedactStep", () => {
   it("drops the step (returns null) when redaction throws", () => {
     const broken = step({});

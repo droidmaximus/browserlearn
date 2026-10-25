@@ -1,4 +1,4 @@
-import type { RawStep, SelectorCandidates } from "./types.js";
+import type { ActionType, RawStep, SelectorCandidates } from "./types.js";
 
 export interface FieldRule {
   /** Hostname suffix, e.g. "example.com" matches "app.example.com". */
@@ -45,37 +45,58 @@ const RULES: Array<[RegExp, string | ((match: string) => string)]> = [
 export function redactText(text: string): string {
   let out = text;
   for (const [pattern, replacement] of RULES) {
-    out = typeof replacement === "string" ? out.replace(pattern, replacement) : out.replace(pattern, replacement);
+    out = out.replace(pattern, (match) => (typeof replacement === "string" ? replacement : replacement(match)));
   }
   return out;
 }
 
 const SENSITIVE_PARAM = /token|key|secret|password|passwd|auth|session|code|sig/i;
 
-export function redactUrl(url: string): string {
+/** A masked value and its marker; any query value or path segment containing the value becomes the marker. */
+interface Masked {
+  literal: string;
+  mask: string;
+}
+
+const containsMasked = (decoded: string, m: Masked | undefined): boolean =>
+  m !== undefined && (decoded.includes(m.literal) || decoded.replace(/\+/g, " ").includes(m.literal));
+
+function cleanUrl(url: string, masked?: Masked): string {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return redactText(url.split(/[?#]/, 1)[0]!);
+    const base = url.split(/[?#]/, 1)[0]!;
+    return redactText(masked ? base.split(masked.literal).join(masked.mask) : base);
   }
   const query = [...parsed.searchParams.entries()]
-    .map(([k, v]) => `${encodeURIComponent(k)}=${SENSITIVE_PARAM.test(k) ? "REDACTED" : encodeURIComponent(redactText(v))}`)
+    .map(([k, v]) => {
+      const value = SENSITIVE_PARAM.test(k)
+        ? "REDACTED"
+        : encodeURIComponent(containsMasked(v, masked) ? masked!.mask : redactText(v));
+      return `${encodeURIComponent(k)}=${value}`;
+    })
     .join("&");
   const pathname = parsed.pathname
     .split("/")
     .map((segment) => {
-      let decoded: string;
+      let decoded: string | undefined;
       try {
         decoded = decodeURIComponent(segment);
       } catch {
-        return redactText(segment);
+        decoded = undefined;
       }
+      if (containsMasked(decoded ?? segment, masked)) return encodeURIComponent(masked!.mask);
+      if (decoded === undefined) return redactText(segment);
       const redacted = redactText(decoded);
       return redacted === decoded ? segment : encodeURIComponent(redacted);
     })
     .join("/");
   return `${parsed.origin}${pathname}${query ? `?${query}` : ""}`;
+}
+
+export function redactUrl(url: string): string {
+  return cleanUrl(url);
 }
 
 function hostOf(url: string): string {
@@ -91,7 +112,54 @@ function fieldMatches(selectors: SelectorCandidates, field: string): boolean {
   return [selectors.name, selectors.testId, selectors.css].some((v) => v?.toLowerCase().includes(needle));
 }
 
-export function redactStep(step: RawStep, rules: FieldRule[] = []): RawStep {
+const ACTIONS: ReadonlySet<string> = new Set<ActionType>(["click", "type", "select", "navigate", "scroll", "submit"]);
+const SELECTOR_KEYS = ["testId", "role", "name", "css", "xpath"] as const;
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+function invalid(field: string): never {
+  throw new Error(`invalid step field: ${field}`);
+}
+
+function optString(v: unknown, field: string): string | undefined {
+  if (v !== undefined && typeof v !== "string") invalid(field);
+  return v;
+}
+
+/** Copies only known RawStep fields, checking their types; screenshot paths are never taken from the wire. */
+function pickRawStep(input: unknown): RawStep {
+  if (!isObject(input)) invalid("step");
+  const { seq, action, selectors, axSnippet, url, framePath, value, isPassword, ts } = input;
+  if (!Number.isInteger(seq)) invalid("seq");
+  if (typeof action !== "string" || !ACTIONS.has(action)) invalid("action");
+  if (!isObject(selectors)) invalid("selectors");
+  if (typeof axSnippet !== "string") invalid("axSnippet");
+  if (typeof url !== "string") invalid("url");
+  if (!Array.isArray(framePath) || !framePath.every((i) => Number.isInteger(i) && i >= 0)) invalid("framePath");
+  if (typeof ts !== "number" || !Number.isFinite(ts)) invalid("ts");
+  if (isPassword !== undefined && typeof isPassword !== "boolean") invalid("isPassword");
+  const picked: SelectorCandidates = {};
+  for (const key of SELECTOR_KEYS) {
+    const v = optString(selectors[key], `selectors.${key}`);
+    if (v !== undefined) picked[key] = v;
+  }
+  const v = optString(value, "value");
+  return {
+    seq: seq as number,
+    action: action as ActionType,
+    selectors: picked,
+    axSnippet,
+    url,
+    framePath: [...(framePath as number[])],
+    ...(v !== undefined ? { value: v } : {}),
+    ...(isPassword !== undefined ? { isPassword } : {}),
+    ts,
+  };
+}
+
+/** Validates and redacts a step received from the extension; throws on any malformed field. */
+export function redactStep(input: RawStep, rules: FieldRule[] = []): RawStep {
+  const step = pickRawStep(input);
   const host = hostOf(step.url);
   const ruleHit = rules.some((r) => {
     const domain = r.domain.toLowerCase();
@@ -105,25 +173,19 @@ export function redactStep(step: RawStep, rules: FieldRule[] = []): RawStep {
     else if (ruleHit) mask = "[REDACTED:field]";
     value = mask ?? redactText(raw);
   }
-  const literal = mask !== undefined && raw !== undefined && raw.length >= 4 ? raw : undefined;
-  const maskLiteral = (text: string): string =>
-    literal === undefined ? text : text.split(literal).join(mask!);
+  const masked = mask !== undefined && raw !== undefined && raw.length >= 4 ? { literal: raw, mask } : undefined;
+  const maskLiteral = (text: string): string => (masked ? text.split(masked.literal).join(masked.mask) : text);
   const scrub = (text: string): string => redactText(maskLiteral(text));
-  const opt = (v: string | undefined): string | undefined => (v === undefined ? undefined : scrub(v));
-  let url = maskLiteral(step.url);
-  if (literal !== undefined) url = url.split(encodeURIComponent(literal)).join(mask!);
+  const selectors: SelectorCandidates = { ...step.selectors };
+  for (const key of ["testId", "name", "css", "xpath"] as const) {
+    if (selectors[key] !== undefined) selectors[key] = scrub(selectors[key]);
+  }
   return {
     ...step,
-    value,
-    url: redactUrl(url),
+    ...(value !== undefined ? { value } : {}),
+    url: cleanUrl(step.url, masked),
     axSnippet: scrub(step.axSnippet),
-    selectors: {
-      ...step.selectors,
-      testId: opt(step.selectors.testId),
-      name: opt(step.selectors.name),
-      css: opt(step.selectors.css),
-      xpath: opt(step.selectors.xpath),
-    },
+    selectors,
   };
 }
 
