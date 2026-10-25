@@ -137,7 +137,7 @@ export async function runWorkflow(w: Workflow, input: unknown, opts: RunOptions)
       if (resolved.expectedUrl) await expectUrl(page, resolved.expectedUrl, timeoutMs);
       run.log.push(`${index + 1}. ${names[index]}`);
     }
-    const outputs = { finalUrl: page.url(), title: await page.title() };
+    const outputs = { finalUrl: urlPath(page.url()), title: await page.title() };
     return { run: { ...run, status: "succeeded", endedAt: now() }, outputs };
   } catch (err) {
     const error = errorMessage(err);

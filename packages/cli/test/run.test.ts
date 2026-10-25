@@ -43,6 +43,47 @@ describe("runWorkflow without a browser", () => {
     app.close();
   });
 
+  it("omits query and fragment from successful run outputs", async () => {
+    const app = testApp();
+    const w: Workflow = {
+      id: "w",
+      name: "Go",
+      description: "",
+      version: 1,
+      params: [],
+      steps: [
+        {
+          id: "s1",
+          name: "Open",
+          action: "navigate",
+          url: "https://app.test/done",
+          fallbacks: [],
+          framePath: [],
+          expected: { urlPath: "https://app.test/done" },
+        },
+      ],
+      sourceRecordingId: "r",
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    const page = {
+      url: () => "https://app.test/done?token=SECRET#frag",
+      title: async () => "Done",
+      goto: async () => undefined,
+    };
+    const outcome = await runWorkflow(w, {}, {
+      screenshotDir: app.paths.runs,
+      launch: async () => ({ newPage: async () => page, close: async () => undefined }) as never,
+    });
+    const leaked = JSON.stringify({ outputs: outcome.outputs, report: runReport(w, outcome) });
+    expect(outcome.run.status).toBe("succeeded");
+    expect(leaked).not.toContain("SECRET");
+    expect(leaked).not.toContain("token=");
+    expect(leaked).not.toContain("?token");
+    expect(leaked).not.toContain("#frag");
+    app.close();
+  });
+
   it("reports public step names only", async () => {
     const app = testApp();
     const w = compileAndSave(app, seedRecording(app));
