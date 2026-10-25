@@ -7,7 +7,12 @@ export interface JsonSchemaObject {
   additionalProperties: false;
 }
 
-export function paramsToJsonSchema(params: ParamDef[]): JsonSchemaObject {
+export interface JsonSchemaOptions {
+  /** Include non-secret recorded examples. Off by default: schemas reach agent LLMs through MCP. */
+  includeExamples?: boolean;
+}
+
+export function paramsToJsonSchema(params: ParamDef[], { includeExamples = false }: JsonSchemaOptions = {}): JsonSchemaObject {
   return {
     type: "object",
     properties: Object.fromEntries(
@@ -16,7 +21,7 @@ export function paramsToJsonSchema(params: ParamDef[]): JsonSchemaObject {
         {
           type: "string" as const,
           description: p.description,
-          ...(p.example !== undefined && !p.secret ? { examples: [p.example] } : {}),
+          ...(includeExamples && p.example !== undefined && !p.secret ? { examples: [p.example] } : {}),
         },
       ]),
     ),
