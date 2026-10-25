@@ -42,6 +42,7 @@ function isPayload(v: unknown): v is LicensePayload {
 }
 
 export function verifyLicense(token: string, publicKeyPem: string, installId: string, now: number): LicenseStatus {
+  if (typeof token !== "string") return { active: false, reason: "malformed" };
   const parts = token.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return { active: false, reason: "malformed" };
   const [body, sig] = parts;

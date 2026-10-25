@@ -42,10 +42,14 @@ it("throws on HTTP errors", async () => {
   await expect(client.complete("s", "u")).rejects.toThrow(/LLM request failed: 401/);
 });
 
-it.each([-1, Number.NaN])("rejects timeoutMs %s at construction", (timeoutMs) => {
-  expect(() => openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", timeoutMs })).toThrow(
-    "timeoutMs must be a positive finite number",
-  );
+it.each([-1, Number.NaN])("rejects timeoutMs %s from complete(), never at construction", async (timeoutMs) => {
+  const fetchImpl = vi.fn(async () => new Response("{}"));
+  let client!: ReturnType<typeof openAiCompatibleClient>;
+  expect(() => {
+    client = openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", timeoutMs, fetchImpl: fetchImpl as typeof fetch });
+  }).not.toThrow();
+  await expect(client.complete("s", "u")).rejects.toThrow("timeoutMs must be a positive finite number");
+  expect(fetchImpl).not.toHaveBeenCalled();
 });
 
 it("times out a request that never answers", async () => {

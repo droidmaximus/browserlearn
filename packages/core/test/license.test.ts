@@ -58,4 +58,22 @@ describe("verifyLicense", () => {
   it("rejects garbage", () => {
     expect(verifyLicense("not-a-token", publicKeyPem, "inst-1", issuedAt)).toEqual({ active: false, reason: "malformed" });
   });
+
+  it.each([undefined, null, 42, {}])("reports a non-string token %j as malformed", (bad) => {
+    expect(verifyLicense(bad as unknown as string, publicKeyPem, "inst-1", issuedAt)).toEqual({
+      active: false,
+      reason: "malformed",
+    });
+  });
+
+  it("is active and not in grace exactly at expiry", () => {
+    expect(verifyLicense(token, publicKeyPem, "inst-1", payload.expiresAt)).toMatchObject({ active: true, inGrace: false });
+  });
+
+  it("is still active, in grace, on the last millisecond of the grace period", () => {
+    expect(verifyLicense(token, publicKeyPem, "inst-1", payload.expiresAt + LICENSE_GRACE_MS)).toMatchObject({
+      active: true,
+      inGrace: true,
+    });
+  });
 });
