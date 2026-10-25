@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildEnrichmentPayload, buildSkeleton, enrichWorkflow, parseEnrichment } from "../src/enrich.js";
 import { openAiCompatibleClient, type LlmClient } from "../src/llm.js";
+import type { WorkflowStep } from "../src/types.js";
 import { compiledFixture } from "./fixtures.js";
 
 const hangingFetch = ((_url: string, init: RequestInit) =>
@@ -63,8 +64,15 @@ describe("buildSkeleton / payload", () => {
     expect(user).toContain("{param_1}");
   });
 
-  const navigateTo = (url: string, i = 0) =>
-    ({ id: `u${i}`, name: "go", action: "navigate", url, fallbacks: [], framePath: [], expected: {} }) as const;
+  const navigateTo = (url: string, i = 0): WorkflowStep => ({
+    id: `u${i}`,
+    name: "go",
+    action: "navigate",
+    url,
+    fallbacks: [],
+    framePath: [],
+    expected: {},
+  });
 
   it.each(["Smith & Co", "Acme, Inc."])("scrubs the example %j from URL paths in every form", (example) => {
     const w = compiledFixture();
