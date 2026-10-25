@@ -122,12 +122,18 @@ function mergeRepeatedInputs(items: Segmented[]): Segmented[] {
   return out;
 }
 
-/** Checkbox/switch clicks on one page: an even count cancels out, an odd count is one click. */
+/**
+ * Clicks on one checkbox/switch on one page with no click or submit between them: an even count
+ * cancels out, an odd count is one click.
+ */
 function dropCancelledToggles(items: Segmented[]): Segmented[] {
   const groups = new Map<string, Segmented[]>();
+  let barriers = 0;
   for (const item of items) {
-    if (!isToggle(item.step)) continue;
-    const key = `${item.segment}|${targetKey(item.step)}`;
+    if (isFoldBarrier(item.step)) barriers++;
+    const target = isToggle(item.step) ? targetKey(item.step) : null;
+    if (target === null) continue;
+    const key = `${item.segment}|${barriers}|${target}`;
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   const dropped = new Set<Segmented>();

@@ -92,6 +92,19 @@ describe("collapseSteps", () => {
     expect(collapseSteps(steps).map((s) => s.seq)).toEqual([2]);
   });
 
+  it("keeps toggles separated by a click or submit", () => {
+    const save = { role: "button", name: "Save" };
+    const steps = [raw(1, { selectors: agree }), raw(2, { selectors: save }), raw(3, { selectors: agree }), raw(4, { selectors: save })];
+    expect(collapseSteps(steps).map((s) => s.seq)).toEqual([1, 2, 3, 4]);
+    const submitted = [raw(1, { selectors: agree }), raw(2, { action: "submit", selectors: { css: "form" } }), raw(3, { selectors: agree })];
+    expect(collapseSteps(submitted).map((s) => s.seq)).toEqual([1, 2, 3]);
+  });
+
+  it("never cancels toggles that have no locator", () => {
+    const unnamed = { role: "checkbox" };
+    expect(collapseSteps([raw(1, { selectors: unnamed }), raw(2, { selectors: unnamed })]).map((s) => s.seq)).toEqual([1, 2]);
+  });
+
   it("keeps toggles of the same checkbox on different pages", () => {
     const steps = [raw(1, { selectors: agree }), raw(2, { selectors: agree, url: "https://a.test/other" })];
     expect(collapseSteps(steps).map((s) => s.seq)).toEqual([1, 2]);
