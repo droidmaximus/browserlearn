@@ -1,4 +1,4 @@
-import type { ActionType, RawStep, SelectorCandidates } from "./types.js";
+import type { ActionType, RawStep, Recording, SelectorCandidates } from "./types.js";
 
 export interface FieldRule {
   /** Hostname suffix, e.g. "example.com" matches "app.example.com". */
@@ -116,9 +116,10 @@ const ACTIONS: ReadonlySet<string> = new Set<ActionType>(["click", "type", "sele
 const SELECTOR_KEYS = ["testId", "role", "name", "css", "xpath"] as const;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isTime = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-function invalid(field: string): never {
-  throw new Error(`invalid step field: ${field}`);
+function invalid(field: string, what = "step"): never {
+  throw new Error(`invalid ${what} field: ${field}`);
 }
 
 function optString(v: unknown, field: string): string | undefined {
@@ -136,7 +137,7 @@ function pickRawStep(input: unknown): RawStep {
   if (typeof axSnippet !== "string") invalid("axSnippet");
   if (typeof url !== "string") invalid("url");
   if (!Array.isArray(framePath) || !framePath.every((i) => Number.isInteger(i) && i >= 0)) invalid("framePath");
-  if (typeof ts !== "number" || !Number.isFinite(ts)) invalid("ts");
+  if (!isTime(ts)) invalid("ts");
   if (isPassword !== undefined && typeof isPassword !== "boolean") invalid("isPassword");
   const picked: SelectorCandidates = {};
   for (const key of SELECTOR_KEYS) {
@@ -186,6 +187,27 @@ export function redactStep(input: RawStep, rules: FieldRule[] = []): RawStep {
     url: cleanUrl(step.url, masked),
     axSnippet: scrub(step.axSnippet),
     selectors,
+  };
+}
+
+/** Validates a recording received from the extension and redacts its name and start URL; throws on malformed input. */
+export function redactRecording(recording: Recording): Recording {
+  const input: unknown = recording;
+  if (!isObject(input)) invalid("recording", "recording");
+  const { id, name, startUrl, startedAt, endedAt, status } = input;
+  if (typeof id !== "string") invalid("id", "recording");
+  if (typeof name !== "string") invalid("name", "recording");
+  if (typeof startUrl !== "string") invalid("startUrl", "recording");
+  if (!isTime(startedAt)) invalid("startedAt", "recording");
+  if (endedAt !== undefined && !isTime(endedAt)) invalid("endedAt", "recording");
+  if (status !== "recording" && status !== "complete") invalid("status", "recording");
+  return {
+    id,
+    name: redactText(name),
+    startUrl: redactUrl(startUrl),
+    startedAt,
+    ...(endedAt !== undefined ? { endedAt } : {}),
+    status,
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { redactStep, redactText, redactUrl, safeRedactStep } from "../src/redact.js";
-import type { RawStep } from "../src/types.js";
+import { redactRecording, redactStep, redactText, redactUrl, safeRedactStep } from "../src/redact.js";
+import type { RawStep, Recording } from "../src/types.js";
 
 describe("redactText", () => {
   it.each([
@@ -220,6 +220,44 @@ describe("masked values in step URLs", () => {
 
   it("masks the value in unparseable URLs", () => {
     expect(pw("hunter22", "/u/hunter22?x=1")).toBe("/u/[REDACTED:password]");
+  });
+});
+
+describe("redactRecording", () => {
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123";
+  const rec: Recording = {
+    id: "r1",
+    name: "Invoice for bob@x.com",
+    startUrl: `https://app.test/s/${jwt}?token=SECRET123&email=bob@x.com&page=2`,
+    startedAt: 5,
+    status: "recording",
+  };
+
+  it("redacts the start URL and the name", () => {
+    const out = redactRecording(rec);
+    const text = JSON.stringify(out);
+    for (const leak of ["SECRET123", "bob@x.com", "eyJ"]) expect(text).not.toContain(leak);
+    expect(out).toEqual({
+      ...rec,
+      name: "Invoice for [REDACTED:email]",
+      startUrl: "https://app.test/s/%5BREDACTED%3Ajwt%5D?token=REDACTED&email=%5BREDACTED%3Aemail%5D&page=2",
+    });
+  });
+
+  it("keeps only known fields", () => {
+    const out = redactRecording({ ...rec, endedAt: 9, notes: "bob@x.com" } as Recording);
+    expect(out).not.toHaveProperty("notes");
+    expect(out.endedAt).toBe(9);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ["non-string id", { id: 1 }],
+    ["non-string startUrl", { startUrl: undefined }],
+    ["non-number startedAt", { startedAt: "0" }],
+    ["unknown status", { status: "paused" }],
+    ["non-number endedAt", { endedAt: "x" }],
+  ])("rejects a recording with %s", (_label, over) => {
+    expect(() => redactRecording({ ...rec, ...over } as unknown as Recording)).toThrow();
   });
 });
 

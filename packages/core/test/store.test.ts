@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Store } from "../src/store.js";
+import type { RawStep } from "../src/types.js";
 import { compiledFixture, fixtureRecording, fixtureSteps } from "./fixtures.js";
 
 let store: Store;
@@ -8,14 +9,55 @@ beforeEach(() => {
 });
 afterEach(() => store.close());
 
+const { endedAt: _e, ...openRecording } = { ...fixtureRecording, status: "recording" as const };
+
 it("stores recordings and returns steps in seq order", () => {
-  store.createRecording({ ...fixtureRecording, status: "recording", endedAt: undefined });
-  for (const s of [...fixtureSteps].reverse()) store.appendStep("rec1", s);
-  expect(store.listSteps("rec1").map((s) => s.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  store.createRecording(openRecording);
+  for (const s of [...fixtureSteps].reverse()) store.ingestStep("rec1", s);
+  expect(store.listSteps("rec1")).toEqual(fixtureSteps);
   const done = store.finishRecording("rec1", 99);
   expect(done).toMatchObject({ status: "complete", endedAt: 99 });
   expect(store.getRecording("rec1")).toEqual(done);
   expect(store.listRecordings()).toHaveLength(1);
+});
+
+describe("redaction before disk", () => {
+  it("redacts recordings before storing them", () => {
+    const stored = store.createRecording({ ...openRecording, name: "bob@x.com", startUrl: "https://app.test/?token=SECRET123" });
+    expect(stored).toMatchObject({ name: "[REDACTED:email]", startUrl: "https://app.test/?token=REDACTED" });
+    expect(store.getRecording("rec1")).toEqual(stored);
+  });
+
+  it("redacts steps before storing them", () => {
+    store.createRecording(openRecording);
+    const wire = { ...fixtureSteps[2]!, value: "bob@x.com", outerHTML: "<input value='bob@x.com'>" } as RawStep;
+    const stored = store.ingestStep("rec1", wire);
+    expect(stored).toEqual({ ...fixtureSteps[2], value: "[REDACTED:email]" });
+    expect(store.listSteps("rec1")).toEqual([stored]);
+  });
+
+  it("applies field rules on ingest", () => {
+    store.createRecording(openRecording);
+    store.ingestStep("rec1", fixtureSteps[2]!, [{ domain: "app.test", field: "customer" }]);
+    expect(store.listSteps("rec1")[0]?.value).toBe("[REDACTED:field]");
+  });
+
+  it("drops invalid steps without storing them", () => {
+    store.createRecording(openRecording);
+    expect(store.ingestStep("rec1", { ...fixtureSteps[0]!, action: "hover" } as unknown as RawStep)).toBeNull();
+    expect(store.listSteps("rec1")).toEqual([]);
+  });
+
+  it("has no raw step insert", () => {
+    expect("appendStep" in store).toBe(false);
+  });
+});
+
+it("ignores a re-sent step with the same seq", () => {
+  store.createRecording(openRecording);
+  store.ingestStep("rec1", fixtureSteps[2]!);
+  expect(() => store.ingestStep("rec1", { ...fixtureSteps[2]!, value: "Other" })).not.toThrow();
+  expect(store.listSteps("rec1")).toEqual([fixtureSteps[2]]);
 });
 
 it("throws when finishing an unknown recording", () => {

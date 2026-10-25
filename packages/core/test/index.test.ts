@@ -7,6 +7,7 @@ it("exposes the public API", () => {
     "redactText",
     "redactUrl",
     "redactStep",
+    "redactRecording",
     "safeRedactStep",
     "chooseLocators",
     "describeLocator",

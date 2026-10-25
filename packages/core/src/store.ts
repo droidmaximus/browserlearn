@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { type FieldRule, redactRecording, safeRedactStep } from "./redact.js";
 import type { RawStep, Recording, Run, StoredLicense, Workflow } from "./types.js";
 
 const SCHEMA = `
@@ -36,8 +37,11 @@ export class Store {
     this.db.close();
   }
 
-  createRecording(r: Recording): void {
+  /** Redacts the recording, then stores it. Throws on malformed input. */
+  createRecording(raw: Recording): Recording {
+    const r = redactRecording(raw);
     this.db.prepare("INSERT INTO recordings (id, started_at, data) VALUES (?, ?, ?)").run(r.id, r.startedAt, JSON.stringify(r));
+    return r;
   }
 
   getRecording(id: string): Recording | undefined {
@@ -56,10 +60,17 @@ export class Store {
     return done;
   }
 
-  appendStep(recordingId: string, step: RawStep): void {
+  /**
+   * Redacts the step, then stores it. Returns null, storing nothing, when redaction rejects the step.
+   * A re-sent step with an already stored seq is ignored.
+   */
+  ingestStep(recordingId: string, raw: RawStep, rules: FieldRule[] = []): RawStep | null {
+    const step = safeRedactStep(raw, rules);
+    if (!step) return null;
     this.db
-      .prepare("INSERT INTO steps (recording_id, seq, data) VALUES (?, ?, ?)")
+      .prepare("INSERT INTO steps (recording_id, seq, data) VALUES (?, ?, ?) ON CONFLICT (recording_id, seq) DO NOTHING")
       .run(recordingId, step.seq, JSON.stringify(step));
+    return step;
   }
 
   listSteps(recordingId: string): RawStep[] {
