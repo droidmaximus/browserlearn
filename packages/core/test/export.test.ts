@@ -202,6 +202,117 @@ describe("Stagehand runtime targets", () => {
   });
 });
 
+const PLAYWRIGHT_STUB = `
+const calls = [];
+const locator = (d) => ({
+  click: async () => calls.push(["click", d]),
+  fill: async (v) => calls.push(["fill", d, v]),
+  selectOption: async (v) => calls.push(["select", d, v]),
+  evaluate: async () => calls.push(["submit", d]),
+});
+const stubPage = {
+  goto: async (u) => calls.push(["goto", u]),
+  waitForURL: async () => {},
+  getByRole: (r, o) => locator(r + ":" + o.name),
+  getByTestId: (t) => locator(t),
+  locator: (c) => locator(c),
+};
+const chromium = { launch: async () => ({ newPage: async () => stubPage, close: async () => console.log(JSON.stringify(calls)) }) };
+`;
+
+const STAGEHAND_STUB = `
+const calls = [];
+class Stagehand {
+  async init() {}
+  get context() {
+    return { pages: () => [{ goto: async (u) => calls.push(["goto", u]), url: async () => "" }] };
+  }
+  async act(instruction, opts) { calls.push(["act", instruction, opts?.variables]); }
+  async close() { console.log(JSON.stringify(calls)); }
+}
+`;
+
+/** Runs a generated script against a stub library; returns the recorded calls, or the error message. */
+function runWithStub(src: string, arg: string): unknown {
+  const code = src
+    .replace(`import { chromium } from "playwright";`, PLAYWRIGHT_STUB)
+    .replace(`import { Stagehand } from "@browserbasehq/stagehand";`, STAGEHAND_STUB);
+  try {
+    const out = execFileSync(process.execPath, ["--input-type=module", "-e", code, "workflow.mjs", arg], { stdio: "pipe" });
+    return JSON.parse(out.toString());
+  } catch (e) {
+    return /Error: (.*)/.exec(String((e as { stderr: Buffer }).stderr))?.[1];
+  }
+}
+
+function optionalWorkflow(...steps: Workflow["steps"]): Workflow {
+  const w = compiledFixture();
+  w.params = [{ name: "note", description: "", required: false, secret: false, example: "Urgent" }];
+  w.steps = [{ id: "nav", name: "Open", action: "navigate", url: "https://app.test/", fallbacks: [], framePath: [], expected: {} }, ...steps];
+  return w;
+}
+
+const typeNote = {
+  id: "t",
+  name: "Type note",
+  action: "type" as const,
+  locator: { kind: "role" as const, role: "textbox", name: "Note" },
+  fallbacks: [],
+  param: "note",
+  framePath: [],
+  expected: {},
+};
+const clickUrgent = {
+  id: "c",
+  name: "Pick",
+  action: "click" as const,
+  locator: { kind: "role" as const, role: "option", name: "Urgent" },
+  fallbacks: [],
+  framePath: [],
+  expected: {},
+};
+const openNote = { ...optionalWorkflow().steps[0]!, id: "n2", url: "https://app.test/notes/Urgent" };
+
+describe("optional params at run time", () => {
+  it("Playwright skips a type step whose optional param is missing", () => {
+    const src = exportPlaywright(optionalWorkflow(typeNote));
+    assertValidModule(src);
+    expect(runWithStub(src, "{}")).toEqual([["goto", "https://app.test/"]]);
+    expect(runWithStub(src, '{"note":"Hi"}')).toEqual([
+      ["goto", "https://app.test/"],
+      ["fill", "textbox:Note", "Hi"],
+    ]);
+  });
+
+  it("Stagehand skips a type step whose optional param is missing", () => {
+    const src = exportStagehand(optionalWorkflow(typeNote));
+    assertValidModule(src);
+    expect(runWithStub(src, "{}")).toEqual([["goto", "https://app.test/"]]);
+    expect(runWithStub(src, '{"note":"Hi"}')).toEqual([
+      ["goto", "https://app.test/"],
+      ["act", 'type %note% into the "Note" textbox', { note: "Hi" }],
+    ]);
+  });
+
+  it.each([
+    ["playwright", exportPlaywright],
+    ["stagehand", exportStagehand],
+  ])("%s throws a clear error when a missing optional param is needed by a locator or URL", (_name, exporter) => {
+    for (const step of [clickUrgent, openNote]) {
+      const src = exporter(optionalWorkflow(step));
+      assertValidModule(src);
+      expect(runWithStub(src, "{}")).toBe("Missing parameter: note");
+      expect(runWithStub(src, '{"note":"Urgent"}')).not.toBe("Missing parameter: note");
+    }
+  });
+
+  it("keeps required params unconditional", () => {
+    const src = exportPlaywright(compiledFixture());
+    expect(src).not.toContain("Object.hasOwn(params, \"param_1\")");
+    expect(src).not.toContain("requireParam");
+  });
+});
+
 describe("URL_PATH_MATCH", () => {
   const urlPathMatches = new Function(`${URL_PATH_MATCH}\nreturn urlPathMatches;`)() as (a: string, e: string) => boolean;
 

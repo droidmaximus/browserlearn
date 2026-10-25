@@ -3,10 +3,12 @@ import {
   checkStepParams,
   chooseLocator,
   chunksExpr,
+  neededRef,
   noLocatorLine,
   paramRef,
   q,
   scriptHeader,
+  skipUnlessGiven,
   stepComment,
   textChunks,
   urlExpr,
@@ -19,7 +21,7 @@ export function locatorExpr(l: Locator, framePath: number[], params: ParamDef[] 
     case "testId":
       return `${base}.getByTestId(${q(l.testId)})`;
     case "role":
-      return `${base}.getByRole(${q(l.role)}, { name: ${chunksExpr(textChunks(l.name, params))}, exact: true })`;
+      return `${base}.getByRole(${q(l.role)}, { name: ${chunksExpr(textChunks(l.name, params), neededRef(params))}, exact: true })`;
     case "css":
       return `${base}.locator(${q(l.css)})`;
     case "xpath":
@@ -27,8 +29,8 @@ export function locatorExpr(l: Locator, framePath: number[], params: ParamDef[] 
   }
 }
 
-function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
-  const out = [`  // ${stepComment(s, params)}`];
+function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
+  const out: string[] = [];
   const value = paramRef(s.param ?? "");
   const locator = chooseLocator(s, params);
   if (s.action === "navigate") {
@@ -46,6 +48,10 @@ function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
     out.push(`  await page.waitForURL((u) => urlPathMatches(u.href, ${urlExpr(s.expected.urlPath, params)}));`);
   }
   return out;
+}
+
+function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
+  return [`  // ${stepComment(s, params)}`, ...skipUnlessGiven(s, params, actionLines(s, params))];
 }
 
 export function exportPlaywright(w: Workflow): string {

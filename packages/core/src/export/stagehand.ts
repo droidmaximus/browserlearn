@@ -6,11 +6,13 @@ import {
   chunkParams,
   chunksExpr,
   locatorChunks,
+  neededRef,
   noLocatorLine,
   oneLine,
   paramRef,
   q,
   scriptHeader,
+  skipUnlessGiven,
   stepComment,
   urlExpr,
 } from "./shared.js";
@@ -57,13 +59,13 @@ function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
   const notices = [...new Set(chunkParams(target))].map(
     (name) => `  // Sends the value of ${oneLine(name)} to your LLM provider at run time`,
   );
-  return [...notices, `  await stagehand.act(${chunksExpr([{ text: verb }, ...target])}${variables});`];
+  return [...notices, `  await stagehand.act(${chunksExpr([{ text: verb }, ...target], neededRef(params))}${variables});`];
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
-  const out = [`  // ${stepComment(s, params)}`, ...actionLines(s, params)];
-  if (s.expected.urlPath) out.push(`  await expectUrl(${urlExpr(s.expected.urlPath, params)});`);
-  return out;
+  const body = actionLines(s, params);
+  if (s.expected.urlPath) body.push(`  await expectUrl(${urlExpr(s.expected.urlPath, params)});`);
+  return [`  // ${stepComment(s, params)}`, ...skipUnlessGiven(s, params, body)];
 }
 
 export function exportStagehand(w: Workflow): string {

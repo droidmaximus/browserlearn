@@ -28,6 +28,20 @@ export const URL_PATH_MATCH = [
 
 export const paramRef = (name: string): string => `params[${q(name)}]`;
 
+const isOptional = (params: ParamDef[], name: string): boolean => params.find((p) => p.name === name)?.required === false;
+
+/** A reference for a param the step cannot run without: optional params throw at run time when missing. */
+export const neededRef =
+  (params: ParamDef[]) =>
+  (name: string): string =>
+    isOptional(params, name) ? `requireParam(${q(name)})` : paramRef(name);
+
+/** A type/select step whose own param is optional runs only when that param was given. */
+export function skipUnlessGiven(s: WorkflowStep, params: ParamDef[], lines: string[]): string[] {
+  if ((s.action !== "type" && s.action !== "select") || !s.param || !isOptional(params, s.param)) return lines;
+  return [`  if (Object.hasOwn(params, ${q(s.param)})) {`, ...lines.map((l) => `  ${l}`), `  }`];
+}
+
 /** A literal piece of text, or a position that holds a param's runtime value. */
 export type Chunk = { text: string } | { param: string };
 
@@ -135,7 +149,7 @@ export function chunksText(chunks: Chunk[], placeholder: (name: string) => strin
 export const chunkParams = (chunks: Chunk[]): string[] => chunks.flatMap((c) => ("param" in c ? [c.param] : []));
 
 export const urlExpr = (url: string, params: ParamDef[]): string =>
-  chunksExpr(urlChunks(url, params), (name) => `encodeURIComponent(${paramRef(name)})`);
+  chunksExpr(urlChunks(url, params), (name) => `encodeURIComponent(${neededRef(params)(name)})`);
 
 export function locatorText(l: Locator): string {
   switch (l.kind) {
@@ -204,7 +218,7 @@ export function scriptHeader(w: Workflow, importLine: string): string {
 
 export function paramsPreamble(w: Workflow): string {
   const required = JSON.stringify(w.params.filter((p) => p.required).map((p) => p.name));
-  return [
+  const lines = [
     `const params = JSON.parse(process.argv[2] ?? "{}");`,
     `if (typeof params !== "object" || params === null || Array.isArray(params)) {`,
     `  throw new Error("Parameters must be a JSON object");`,
@@ -215,5 +229,14 @@ export function paramsPreamble(w: Workflow): string {
     `for (const [name, value] of Object.entries(params)) {`,
     "  if (typeof value !== \"string\") throw new Error(`Parameter ${name} must be a string`);",
     `}`,
-  ].join("\n");
+  ];
+  if (w.params.some((p) => !p.required)) {
+    lines.push(
+      `function requireParam(name) {`,
+      "  if (!Object.hasOwn(params, name)) throw new Error(`Missing parameter: ${name}`);",
+      `  return params[name];`,
+      `}`,
+    );
+  }
+  return lines.join("\n");
 }
