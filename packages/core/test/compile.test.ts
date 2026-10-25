@@ -147,10 +147,34 @@ describe("compileRecording edge cases", () => {
     expect(w.steps[0]).toMatchObject({ action: "navigate", url: rec.startUrl, expected: {} });
   });
 
+  const typed = (value: string, over: Partial<RawStep> = {}) =>
+    compile([raw(1, { action: "type", selectors: { role: "textbox", name: "Who" }, value, ...over })]).params[0];
+
+  it("hides partly redacted values but keeps their plaintext fragments as scrub terms", () => {
+    expect(typed("Jane Doe [REDACTED:email] x [REDACTED:phone] Smithson")).toEqual({
+      name: "param_1",
+      description: 'Value for textbox "Who"',
+      required: true,
+      secret: false,
+      scrubTerms: ["Jane Doe", "Smithson"],
+    });
+  });
+
+  it("only treats real redaction markers as redacted", () => {
+    expect(typed("[REDACTED draft]")).toMatchObject({ example: "[REDACTED draft]", scrubTerms: ["[REDACTED draft]"] });
+  });
+
+  it("marks field-rule and password masked values secret", () => {
+    expect(typed("[REDACTED:field]")).toMatchObject({ secret: true });
+    expect(typed("[REDACTED:field]")).not.toHaveProperty("scrubTerms");
+    expect(typed("[REDACTED:password]")).toMatchObject({ secret: true });
+    expect(typed("[REDACTED:email]")).toMatchObject({ secret: false });
+  });
+
   it("parameterizes select steps", () => {
     const w = compile([raw(1, { action: "select", selectors: { role: "combobox", name: "Plan" }, value: "Pro" })]);
     expect(w.params).toEqual([
-      { name: "param_1", description: 'Value for combobox "Plan"', required: true, secret: false, example: "Pro" },
+      { name: "param_1", description: 'Value for combobox "Plan"', required: true, secret: false, example: "Pro", scrubTerms: ["Pro"] },
     ]);
     expect(w.steps[1]).toMatchObject({ name: 'Select in combobox "Plan"', param: "param_1" });
   });
@@ -173,7 +197,14 @@ describe("compileRecording", () => {
       createdAt: 1000,
       updatedAt: 1000,
       params: [
-        { name: "param_1", description: 'Value for textbox "Customer"', required: true, secret: false, example: "Acme Corp" },
+        {
+          name: "param_1",
+          description: 'Value for textbox "Customer"',
+          required: true,
+          secret: false,
+          example: "Acme Corp",
+          scrubTerms: ["Acme Corp"],
+        },
         { name: "param_2", description: 'Value for textbox "Password"', required: true, secret: true },
       ],
       steps: [

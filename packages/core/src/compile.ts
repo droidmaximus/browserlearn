@@ -161,6 +161,17 @@ const VERB: Record<Exclude<WorkflowAction, "navigate">, string> = {
   submit: "Submit",
 };
 
+const REDACTION_MARKER = /\[REDACTED:[a-z]+\]/;
+/** Markers that replace a whole value (password fields and field rules) rather than a pattern match inside it. */
+const WHOLE_VALUE_MASKS: ReadonlySet<string> = new Set(["[REDACTED:password]", "[REDACTED:field]"]);
+
+/** The text between redaction markers, trimmed; pieces under 3 characters are too short to scrub safely. */
+const plaintextFragments = (value: string): string[] =>
+  value
+    .split(new RegExp(REDACTION_MARKER.source, "g"))
+    .map((piece) => piece.trim())
+    .filter((piece) => piece.length >= 3);
+
 export interface CompileOptions {
   now: number;
   newId?: () => string;
@@ -202,13 +213,16 @@ export function compileRecording(rec: Recording, rawSteps: RawStep[], opts: Comp
     let param: string | undefined;
     if (action === "type" || action === "select") {
       param = `param_${params.length + 1}`;
-      const hidden = s.value === undefined || s.value.includes("[REDACTED");
+      const value = s.value;
+      const hidden = value === undefined || REDACTION_MARKER.test(value);
+      const scrubTerms = value === undefined ? [] : plaintextFragments(value);
       params.push({
         name: param,
         description: `Value for ${target}`,
         required: true,
-        secret: Boolean(s.isPassword),
-        ...(hidden ? {} : { example: s.value }),
+        secret: Boolean(s.isPassword) || (value !== undefined && WHOLE_VALUE_MASKS.has(value)),
+        ...(hidden ? {} : { example: value }),
+        ...(scrubTerms.length ? { scrubTerms } : {}),
       });
     }
     out.push({

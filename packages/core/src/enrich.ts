@@ -22,10 +22,13 @@ type Scrubber = (text: string) => string;
 function exampleScrubber(w: Workflow): Scrubber {
   const pairs: [RegExp, string][] = [];
   for (const p of w.params) {
-    if (p.secret || p.example === undefined || p.example.length < 3) continue;
-    const encoded = encodeURIComponent(p.example);
-    for (const form of new Set([p.example, encoded, encoded.replace(/%20/g, "+")])) {
-      pairs.push([new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), `{${p.name}}`]);
+    const terms = new Set([...(p.secret || p.example === undefined ? [] : [p.example]), ...(p.scrubTerms ?? [])]);
+    for (const term of terms) {
+      if (term.length < 3) continue;
+      const encoded = encodeURIComponent(term);
+      for (const form of new Set([term, encoded, encoded.replace(/%20/g, "+")])) {
+        pairs.push([new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), `{${p.name}}`]);
+      }
     }
   }
   pairs.sort((a, b) => b[0].source.length - a[0].source.length);
@@ -42,22 +45,21 @@ function decodeSegment(segment: string): string {
   }
 }
 
-/** Origin is kept verbatim; path segments are decoded, scrubbed, ID-generalized and redacted. */
+/**
+ * Scheme and port are kept verbatim; the host is scrubbed and redacted. The whole decoded path is
+ * scrubbed before it is split, so values containing "/" are caught; segments are then ID-generalized and redacted.
+ */
 function skeletonUrl(url: string, scrub: Scrubber): string {
   const base = urlPath(url).split(/[?#]/, 1)[0]!;
-  const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/]*/i.exec(base)?.[0] ?? "";
-  const path = base
-    .slice(origin.length)
+  const [origin = "", scheme = "", host = "", port = ""] =
+    /^([a-z][a-z0-9+.-]*:\/\/)(\[[^\]]*\]|[^/:]*)(:\d*)?/i.exec(base) ?? [];
+  const hostname = host.startsWith("[") ? host : redactText(scrub(host));
+  const decodedPath = base.slice(origin.length).split("/").map(decodeSegment).join("/");
+  const path = scrub(decodedPath)
     .split("/")
-    .map((segment) => {
-      const decoded = decodeSegment(segment);
-      const scrubbed = scrub(decoded);
-      if (ID_SEGMENT.test(scrubbed)) return ":id";
-      const redacted = redactText(scrubbed);
-      return redacted === decoded ? segment : encodeURIComponent(redacted);
-    })
+    .map((segment) => (ID_SEGMENT.test(segment) ? ":id" : encodeURIComponent(redactText(segment))))
     .join("/");
-  return origin + path;
+  return scheme + hostname + port + path;
 }
 
 export function buildSkeleton(w: Workflow): Skeleton {

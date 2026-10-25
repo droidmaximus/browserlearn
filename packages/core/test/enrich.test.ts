@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { compileRecording } from "../src/compile.js";
 import { buildEnrichmentPayload, buildSkeleton, enrichWorkflow, parseEnrichment } from "../src/enrich.js";
 import { openAiCompatibleClient, type LlmClient } from "../src/llm.js";
 import type { WorkflowStep } from "../src/types.js";
@@ -87,11 +88,56 @@ describe("buildSkeleton / payload", () => {
     expect(buildSkeleton(w).steps.every((s) => s.url!.startsWith("https://app.test/c/") && s.url!.endsWith("/x"))).toBe(true);
   });
 
-  it("never rewrites the URL origin", () => {
+  it("scrubs host labels but never the scheme or port", () => {
     const w = compiledFixture();
     w.params[0].example = "app";
-    w.steps = [navigateTo("https://app.test/app/x")];
-    expect(buildSkeleton(w).steps[0].url).toBe("https://app.test/%7Bparam_1%7D/x");
+    w.steps = [navigateTo("https://app.test:8443/app/x")];
+    expect(buildSkeleton(w).steps[0].url).toBe("https://{param_1}.test:8443/%7Bparam_1%7D/x");
+    w.params[0].example = "http";
+    w.steps = [navigateTo("https://a.test/")];
+    expect(buildSkeleton(w).steps[0].url).toBe("https://a.test/");
+  });
+
+  it("scrubs a typed value from the host", () => {
+    const w = compiledFixture();
+    w.params[0].example = "acmecorp";
+    w.steps = [navigateTo("https://acmecorp.slack.test/messages")];
+    expect(buildSkeleton(w).steps[0].url).toBe("https://{param_1}.slack.test/messages");
+  });
+
+  it("scrubs values containing a slash from URL paths", () => {
+    const w = compiledFixture();
+    w.params[0].example = "docs/q3";
+    w.steps = [navigateTo("https://app.test/files/docs/q3"), navigateTo("https://app.test/files/docs%2Fq3", 1)];
+    const { user } = buildEnrichmentPayload(w);
+    expect(user).not.toContain("q3");
+    expect(buildSkeleton(w).steps[0].url).toBe("https://app.test/files/%7Bparam_1%7D");
+  });
+
+  it("scrubs the plaintext left in a partly redacted value", () => {
+    const w = compileRecording(
+      { id: "r", name: "Find person", startUrl: "https://app.test/", startedAt: 0, status: "complete" },
+      [
+        { seq: 1, action: "type", url: "https://app.test/", selectors: { role: "searchbox", name: "Search" }, axSnippet: "", framePath: [], ts: 0, value: "Jane Doe [REDACTED:email]" },
+        { seq: 2, action: "click", url: "https://app.test/", selectors: { role: "link", name: "Jane Doe profile" }, axSnippet: "", framePath: [], ts: 0 },
+        { seq: 3, action: "navigate", url: "https://app.test/people/Jane%20Doe", selectors: {}, axSnippet: "", framePath: [], ts: 0 },
+      ],
+      { now: 0 },
+    );
+    expect(w.params[0]).not.toHaveProperty("example");
+    const { user } = buildEnrichmentPayload(w);
+    expect(user).not.toContain("Jane");
+    expect(user).toContain('link \\"{param_1} profile\\"');
+    expect(user).toContain("https://app.test/people/%7Bparam_1%7D");
+  });
+
+  it("never sends scrub terms or examples", () => {
+    const w = compiledFixture();
+    w.params[0].scrubTerms = ["Zebra Holdings"];
+    w.name = "Invoice Zebra Holdings";
+    const { user } = buildEnrichmentPayload(w);
+    expect(user).not.toContain("Zebra");
+    expect(user).not.toContain("scrubTerms");
   });
 
   it("matches examples case-insensitively", () => {

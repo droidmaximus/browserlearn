@@ -65,6 +65,11 @@ export interface ParamDef {
   required: boolean;
   example?: string;
   secret: boolean;
+  /**
+   * Plaintext fragments of the recorded value, kept even when `example` is hidden so the LLM skeleton
+   * can scrub them. Local only: never include in exports, MCP responses or LLM payloads.
+   */
+  scrubTerms?: string[];
 }
 
 export interface Workflow {
