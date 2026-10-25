@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   generateLicenseKeyPair,
@@ -75,5 +76,21 @@ describe("verifyLicense", () => {
       active: true,
       inGrace: true,
     });
+  });
+});
+
+describe("license key checks", () => {
+  const keys = generateLicenseKeyPair();
+  const now = 1_000_000;
+  const token = signLicense({ plan: "pro", installId: "install-1", issuedAt: now, expiresAt: now + 1000 }, keys.privateKeyPem);
+
+  it("reports an unusable public key as bad_key", () => {
+    expect(verifyLicense(token, "not a key", "install-1", now)).toEqual({ active: false, reason: "bad_key" });
+    const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ type: "spki", format: "pem" }).toString();
+    expect(verifyLicense(token, ec, "install-1", now)).toEqual({ active: false, reason: "bad_key" });
+  });
+
+  it("still verifies with the right key", () => {
+    expect(verifyLicense(token, keys.publicKeyPem, "install-1", now)).toMatchObject({ active: true });
   });
 });

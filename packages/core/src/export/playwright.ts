@@ -42,7 +42,7 @@ function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
     if (s.action === "click") out.push(`  await ${loc}.click();`);
     if (s.action === "type") out.push(`  await ${loc}.fill(${value});`);
     if (s.action === "select") out.push(`  await ${loc}.selectOption(${value});`);
-    if (s.action === "submit") out.push(`  await ${loc}.evaluate((form) => form.requestSubmit());`);
+    if (s.action === "submit") out.push(`  await ${loc}.evaluate((el) => (el instanceof HTMLFormElement ? el : el.closest("form"))?.requestSubmit());`);
   }
   if (s.expected.urlPath) {
     out.push(`  await page.waitForURL((u) => urlPathMatches(u.href, ${urlExpr(s.expected.urlPath, params)}));`);
@@ -59,7 +59,8 @@ export function exportPlaywright(w: Workflow): string {
   return [
     scriptHeader(w, `import { chromium } from "playwright";`),
     ``,
-    `const browser = await chromium.launch({ headless: false });`,
+    `// Set HEADLESS=1 to run without a visible browser window.`,
+    `const browser = await chromium.launch({ headless: process.env.HEADLESS === "1" });`,
     `const page = await browser.newPage();`,
     `try {`,
     ...w.steps.flatMap((s) => stepLines(s, w.params)),

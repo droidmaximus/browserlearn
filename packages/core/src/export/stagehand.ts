@@ -44,6 +44,8 @@ const EXPECT_URL = [
   `}`,
 ];
 
+const ACT_TEXT = [`function actText(value) {`, `  return String(value).replace(/["%]/g, "");`, `}`];
+
 function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
   if (s.action === "navigate") return [`  await page.goto(${urlExpr(s.url ?? "", params)});`];
   const locator = chooseLocator(s, params);
@@ -59,7 +61,8 @@ function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
   const notices = [...new Set(chunkParams(target))].map(
     (name) => `  // Sends the value of ${oneLine(name)} to your LLM provider at run time`,
   );
-  return [...notices, `  await stagehand.act(${chunksExpr([{ text: verb }, ...target], neededRef(params))}${variables});`];
+  const ref = (name: string): string => `actText(${neededRef(params)(name)})`;
+  return [...notices, `  await stagehand.act(${chunksExpr([{ text: verb }, ...target], ref)}${variables});`];
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
@@ -72,8 +75,11 @@ export function exportStagehand(w: Workflow): string {
   checkStepParams(w);
   return [
     scriptHeader(w, `import { Stagehand } from "@browserbasehq/stagehand";`),
+    `// Stagehand calls an LLM for every act(): set your provider's API key (for example OPENAI_API_KEY) before running.`,
     ``,
     ...EXPECT_URL,
+    ``,
+    ...ACT_TEXT,
     ``,
     `const stagehand = new Stagehand({ env: "LOCAL" });`,
     `await stagehand.init();`,

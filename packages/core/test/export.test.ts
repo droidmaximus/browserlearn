@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { exportPlaywright, locatorExpr } from "../src/export/playwright.js";
 import { paramsPreamble, URL_PATH_MATCH } from "../src/export/shared.js";
 import { exportStagehand } from "../src/export/stagehand.js";
-import type { Locator, Workflow } from "../src/types.js";
+import type { Locator, ParamDef, Workflow, WorkflowStep } from "../src/types.js";
 import { compiledFixture } from "./fixtures.js";
 
 function assertValidModule(source: string): void {
@@ -176,7 +176,7 @@ describe("Playwright locator params", () => {
 });
 
 describe("Stagehand runtime targets", () => {
-  const actLine = 'await stagehand.act("click the \\"" + params["param_1"] + "\\" option");';
+  const actLine = 'await stagehand.act("click the \\"" + actText(params["param_1"]) + "\\" option");';
   const notice = "  // Sends the value of param_1 to your LLM provider at run time\n";
 
   it("builds the act() instruction from the param value at run time", () => {
@@ -350,5 +350,82 @@ describe("paramsPreamble", () => {
     expect(run("[1]")).toContain("Parameters must be a JSON object");
     expect(run("null")).toContain("Parameters must be a JSON object");
     expect(run('{"param_1":"x","param_2":5}')).toContain("Parameter param_2 must be a string");
+  });
+});
+
+describe("export hardening", () => {
+  const wf = (steps: WorkflowStep[], params: ParamDef[]): Workflow => ({
+    id: "w",
+    name: "W",
+    description: "",
+    version: 1,
+    params,
+    steps,
+    sourceRecordingId: "r",
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const st = (over: Partial<WorkflowStep>): WorkflowStep => ({ id: "s", name: "Step", action: "click", fallbacks: [], framePath: [], expected: {}, ...over });
+  const plan: ParamDef = { name: "plan", description: "", required: true, secret: false, example: "Pro" };
+
+  it("exports select steps", () => {
+    const w = wf([st({ action: "select", param: "plan", locator: { kind: "role", role: "combobox", name: "Plan" } })], [plan]);
+    expect(exportPlaywright(w)).toContain('page.getByRole("combobox", { name: "Plan", exact: true }).selectOption(params["plan"])');
+    const sh = exportStagehand(w);
+    expect(sh).toContain('"select %plan% in the ');
+    expect(sh).toContain('variables: { "plan": params["plan"] }');
+  });
+
+  it("submits the element's form", () => {
+    const w = wf([st({ action: "submit", locator: { kind: "css", css: "#f" } })], []);
+    expect(exportPlaywright(w)).toContain('.evaluate((el) => (el instanceof HTMLFormElement ? el : el.closest("form"))?.requestSubmit());');
+  });
+
+  it("throws at run time for steps without a locator", () => {
+    expect(exportPlaywright(wf([st({ name: "Click thing" })], []))).toContain('throw new Error("Step \\"Click thing\\" has no locator");');
+  });
+
+  it("never substitutes secret or short examples", () => {
+    const pw: ParamDef = { name: "pw", description: "", required: true, secret: true, example: "hunter22" };
+    const st2: ParamDef = { name: "st", description: "", required: true, secret: false, example: "NY" };
+    const out = exportPlaywright(
+      wf(
+        [
+          st({ locator: { kind: "role", role: "button", name: "hunter22" } }),
+          st({ id: "t", locator: { kind: "role", role: "button", name: "NY office" } }),
+        ],
+        [pw, st2],
+      ),
+    );
+    expect(out).toContain('name: "hunter22"');
+    expect(out).toContain('name: "NY office"');
+    expect(out).not.toContain('params["pw"]');
+    expect(out).not.toContain('params["st"]');
+  });
+
+  it("keeps hostile step names on one comment line", () => {
+    const out = exportPlaywright(wf([st({ name: "Click\n*/ evil()", locator: { kind: "css", css: "#a" } })], []));
+    expect(out).toContain("// Click */ evil()");
+    expect(out.split("\n").some((l) => l.trim().startsWith("evil()"))).toBe(false);
+  });
+
+  it("sanitizes values placed in Stagehand act() text and says they reach the LLM", () => {
+    const customer: ParamDef = { name: "customer", description: "", required: true, secret: false, example: "Acme Corp" };
+    const note: ParamDef = { name: "note", description: "", required: true, secret: false, example: "Rush" };
+    const out = exportStagehand(wf([st({ action: "type", param: "note", locator: { kind: "role", role: "textbox", name: "Notes for Acme Corp" } })], [customer, note]));
+    expect(out).toContain('actText(params["customer"])');
+    expect(out).toContain("// Sends the value of customer to your LLM provider at run time");
+    expect(out).toContain('variables: { "note": params["note"] }');
+    expect(out).toContain("function actText(value) {");
+    expect(out).toContain("Stagehand calls an LLM for every act()");
+  });
+
+  it("rejects invalid param names", () => {
+    const bad: ParamDef = { name: "bad name", description: "", required: true, secret: false };
+    expect(() => exportPlaywright(wf([], [bad]))).toThrow('Invalid parameter name: "bad name"');
+  });
+
+  it("runs Playwright headed unless HEADLESS=1", () => {
+    expect(exportPlaywright(wf([], []))).toContain('chromium.launch({ headless: process.env.HEADLESS === "1" })');
   });
 });

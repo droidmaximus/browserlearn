@@ -1,4 +1,4 @@
-import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, type KeyObject, sign, verify } from "node:crypto";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const LICENSE_TTL_MS = 30 * DAY_MS;
@@ -13,7 +13,7 @@ export interface LicensePayload {
 
 export type LicenseStatus =
   | { active: true; plan: "pro"; expiresAt: number; inGrace: boolean }
-  | { active: false; reason: "malformed" | "bad_signature" | "wrong_install" | "expired" };
+  | { active: false; reason: "malformed" | "bad_key" | "bad_signature" | "wrong_install" | "expired" };
 
 export function generateLicenseKeyPair(): { publicKeyPem: string; privateKeyPem: string } {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -47,9 +47,17 @@ export function verifyLicense(token: string, publicKeyPem: string, installId: st
   if (parts.length !== 2 || !parts[0] || !parts[1]) return { active: false, reason: "malformed" };
   const [body, sig] = parts;
 
+  let key: KeyObject;
+  try {
+    key = createPublicKey(publicKeyPem);
+  } catch {
+    return { active: false, reason: "bad_key" };
+  }
+  if (key.asymmetricKeyType !== "ed25519") return { active: false, reason: "bad_key" };
+
   let ok = false;
   try {
-    ok = verify(null, Buffer.from(body), createPublicKey(publicKeyPem), Buffer.from(sig, "base64url"));
+    ok = verify(null, Buffer.from(body), key, Buffer.from(sig, "base64url"));
   } catch {
     ok = false;
   }

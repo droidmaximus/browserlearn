@@ -194,8 +194,13 @@ export function stepComment(s: WorkflowStep, params: ParamDef[]): string {
 export const noLocatorLine = (s: WorkflowStep): string =>
   `  throw new Error(${q(`Step "${oneLine(s.name)}" has no locator`)});`;
 
-/** Throws if a type/select step does not reference a declared param. */
+const PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,39}$/;
+
+/** Throws on param names unsafe for generated code, or a type/select step without a declared param. */
 export function checkStepParams(w: Workflow): void {
+  for (const p of w.params) {
+    if (!PARAM_NAME.test(p.name)) throw new Error(`Invalid parameter name: ${JSON.stringify(p.name)}`);
+  }
   const declared = new Set(w.params.map((p) => p.name));
   for (const s of w.steps) {
     if ((s.action === "type" || s.action === "select") && !(s.param && declared.has(s.param))) {
