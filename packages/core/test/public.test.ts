@@ -68,6 +68,77 @@ describe("toPublicWorkflow", () => {
     toPublicWorkflow(w);
     expect(w).toEqual(before);
   });
+
+  it("hides typed values in the workflow name, CSS/XPath locators, and query substrings", () => {
+    const w: Workflow = {
+      id: "w",
+      name: "Invoice for Acme Corp",
+      description: "Creates an invoice for Acme Corp",
+      version: 1,
+      params: [
+        {
+          name: "company",
+          description: "Company name",
+          required: true,
+          secret: false,
+          example: "Acme Corp",
+          scrubTerms: ["Globex"],
+        },
+      ],
+      steps: [
+        {
+          id: "s1",
+          name: "Click customer",
+          action: "click",
+          locator: { kind: "css", css: "a[title='Acme Corp']" },
+          fallbacks: [
+            { kind: "xpath", xpath: "//a[text()='Acme Corp']" },
+            { kind: "testId", testId: "row-Acme Corp" },
+          ],
+          framePath: [],
+          expected: {},
+        },
+        {
+          id: "s2",
+          name: "Search",
+          action: "navigate",
+          url: "https://app.test/find?q=prefix-Acme+Corp-suffix",
+          fallbacks: [],
+          framePath: [],
+          expected: { urlPath: "https://app.test/find?q=has-Acme%20Corp-in" },
+        },
+      ],
+      sourceRecordingId: "r",
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const text = JSON.stringify(toPublicWorkflow(w));
+    for (const leak of ["Acme Corp", "Acme%20Corp", "Acme+Corp", "Globex", "scrubTerms"]) {
+      expect(text).not.toContain(leak);
+    }
+
+    const exposed = toPublicWorkflow({
+      ...w,
+      exposeExamples: true,
+      steps: [
+        ...w.steps,
+        {
+          id: "s3",
+          name: "Open company",
+          action: "click",
+          locator: { kind: "role", role: "link", name: "Acme Corp" },
+          fallbacks: [],
+          framePath: [],
+          expected: {},
+        },
+      ],
+    });
+    expect(exposed.params[0]!.example).toBe("Acme Corp");
+    expect(exposed.steps.find((s) => s.id === "s3")!.locator).toEqual({ kind: "role", role: "link", name: "Acme Corp" });
+    expect(JSON.stringify(exposed)).not.toContain("Globex");
+    expect(JSON.stringify(exposed)).not.toContain("scrubTerms");
+  });
 });
 
 describe("workflowSummary", () => {
