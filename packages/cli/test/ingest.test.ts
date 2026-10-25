@@ -1,8 +1,10 @@
+import { EventEmitter } from "node:events";
 import { request } from "node:http";
 import type { ServerMessage } from "@browserlearn/core/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import type { App } from "../src/app.js";
+import { IngestHub } from "../src/ingest.js";
 import { type RunningServer, startServer } from "../src/server.js";
 import { formRecording, formSteps, testApp } from "./helpers.js";
 
@@ -152,5 +154,24 @@ describe("ingest", () => {
         .end();
     });
     expect(status).toBe(403);
+  });
+});
+
+describe("IngestHub socket errors", () => {
+  it("does not throw when a paired socket errors, then drops it on close", () => {
+    const app = testApp();
+    const hub = new IngestHub(app);
+    const ws = new EventEmitter() as EventEmitter & { send(data: string): void; close(): void };
+    ws.send = () => undefined;
+    ws.close = () => undefined;
+    hub.accept(ws as unknown as WebSocket);
+    ws.emit("message", JSON.stringify({ type: "hello", token: app.config.pairToken, protocol: 1 }), false);
+    expect(hub.connected).toBe(1);
+    expect(() => {
+      ws.emit("error", new Error("bad frame"));
+      ws.emit("close");
+    }).not.toThrow();
+    expect(hub.connected).toBe(0);
+    app.close();
   });
 });

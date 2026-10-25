@@ -31,6 +31,7 @@ export class IngestHub {
     const timer = setTimeout(() => {
       if (!authed) ws.close(4001, "unauthorized");
     }, this.opts.helloTimeoutMs ?? 5000);
+    ws.on("error", () => undefined);
     ws.on("close", () => {
       clearTimeout(timer);
       this.paired.delete(ws);
