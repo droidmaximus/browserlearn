@@ -1,35 +1,33 @@
 import type { Locator, ParamDef, Workflow, WorkflowStep } from "../types.js";
 import {
   checkStepParams,
+  chooseLocator,
+  type Chunk,
   chunkParams,
-  chunksText,
-  locatorText,
+  chunksExpr,
+  locatorChunks,
   noLocatorLine,
+  oneLine,
   paramRef,
   q,
   scriptHeader,
   stepComment,
-  textChunks,
   urlExpr,
 } from "./shared.js";
 
-function describeTarget(l: Locator, text: string): string {
+/** The act() target; role names may hold params, which are filled in from `params` at run time. */
+function actTarget(l: Locator, params: ParamDef[]): Chunk[] {
+  const text = locatorChunks(l, params);
   switch (l.kind) {
     case "testId":
-      return `element with test id "${text}"`;
+      return [{ text: `element with test id "` }, ...text, { text: `"` }];
     case "role":
-      return `"${text}" ${l.role}`;
+      return [{ text: `"` }, ...text, { text: `" ${l.role}` }];
     case "css":
-      return `element matching "${text}"`;
+      return [{ text: `element matching "` }, ...text, { text: `"` }];
     case "xpath":
-      return `element at xpath "${text}"`;
+      return [{ text: `element at xpath "` }, ...text, { text: `"` }];
   }
-}
-
-/** The act() target, with examples in the locator text replaced by `%name%` variables. */
-function actTarget(l: Locator, params: ParamDef[]): { target: string; vars: string[] } {
-  const chunks = textChunks(locatorText(l), params);
-  return { target: describeTarget(l, chunksText(chunks, (name) => `%${name}%`)), vars: chunkParams(chunks) };
 }
 
 const EXPECT_URL = [
@@ -37,33 +35,33 @@ const EXPECT_URL = [
   `  const deadline = Date.now() + 10_000;`,
   `  for (;;) {`,
   `    const current = await page.url();`,
-  `    const u = new URL(current);`,
-  `    if (u.origin + u.pathname === expected) return;`,
+  `    if (urlPathMatches(current, expected)) return;`,
   "    if (Date.now() >= deadline) throw new Error(`Expected URL ${expected}, got ${current}`);",
   `    await new Promise((resolve) => setTimeout(resolve, 100));`,
   `  }`,
   `}`,
 ];
 
-function actionLine(s: WorkflowStep, params: ParamDef[]): string {
-  if (s.action === "navigate") return `  await page.goto(${urlExpr(s.url ?? "", params)});`;
-  if (!s.locator) return noLocatorLine(s);
-  const { target, vars } = actTarget(s.locator, params);
-  const names = [...new Set([...(s.param ? [s.param] : []), ...vars])];
-  const variables = names.length
-    ? `, { variables: { ${names.map((n) => `${q(n)}: ${paramRef(n)}`).join(", ")} } }`
-    : "";
-  const instruction = {
-    click: `click the ${target}`,
-    type: `type %${s.param}% into the ${target}`,
-    select: `select %${s.param}% in the ${target}`,
-    submit: `submit the ${target}`,
+function actionLines(s: WorkflowStep, params: ParamDef[]): string[] {
+  if (s.action === "navigate") return [`  await page.goto(${urlExpr(s.url ?? "", params)});`];
+  const locator = chooseLocator(s, params);
+  if (!locator) return [noLocatorLine(s)];
+  const target = actTarget(locator, params);
+  const verb = {
+    click: `click the `,
+    type: `type %${s.param}% into the `,
+    select: `select %${s.param}% in the `,
+    submit: `submit the `,
   }[s.action];
-  return `  await stagehand.act(${q(instruction)}${variables});`;
+  const variables = s.param ? `, { variables: { ${q(s.param)}: ${paramRef(s.param)} } }` : "";
+  const notices = [...new Set(chunkParams(target))].map(
+    (name) => `  // Sends the value of ${oneLine(name)} to your LLM provider at run time`,
+  );
+  return [...notices, `  await stagehand.act(${chunksExpr([{ text: verb }, ...target])}${variables});`];
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
-  const out = [`  // ${stepComment(s, params)}`, actionLine(s, params)];
+  const out = [`  // ${stepComment(s, params)}`, ...actionLines(s, params)];
   if (s.expected.urlPath) out.push(`  await expectUrl(${urlExpr(s.expected.urlPath, params)});`);
   return out;
 }

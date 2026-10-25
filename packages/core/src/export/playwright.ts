@@ -1,6 +1,7 @@
 import type { Locator, ParamDef, Workflow, WorkflowStep } from "../types.js";
 import {
   checkStepParams,
+  chooseLocator,
   chunksExpr,
   noLocatorLine,
   paramRef,
@@ -11,37 +12,38 @@ import {
   urlExpr,
 } from "./shared.js";
 
+/** Params are substituted only inside role names; other locator text stays literal. */
 export function locatorExpr(l: Locator, framePath: number[], params: ParamDef[] = []): string {
   const base = framePath.reduce((acc, i) => `${acc}.frameLocator(${q(`iframe >> nth=${i}`)})`, "page");
-  const text = (s: string): string => chunksExpr(textChunks(s, params));
   switch (l.kind) {
     case "testId":
-      return `${base}.getByTestId(${text(l.testId)})`;
+      return `${base}.getByTestId(${q(l.testId)})`;
     case "role":
-      return `${base}.getByRole(${q(l.role)}, { name: ${text(l.name)}, exact: true })`;
+      return `${base}.getByRole(${q(l.role)}, { name: ${chunksExpr(textChunks(l.name, params))}, exact: true })`;
     case "css":
-      return `${base}.locator(${text(l.css)})`;
+      return `${base}.locator(${q(l.css)})`;
     case "xpath":
-      return `${base}.locator(${chunksExpr([{ text: "xpath=" }, ...textChunks(l.xpath, params)])})`;
+      return `${base}.locator(${q(`xpath=${l.xpath}`)})`;
   }
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
   const out = [`  // ${stepComment(s, params)}`];
   const value = paramRef(s.param ?? "");
+  const locator = chooseLocator(s, params);
   if (s.action === "navigate") {
     out.push(`  await page.goto(${urlExpr(s.url ?? "", params)});`);
-  } else if (!s.locator) {
+  } else if (!locator) {
     out.push(noLocatorLine(s));
   } else {
-    const loc = locatorExpr(s.locator, s.framePath, params);
+    const loc = locatorExpr(locator, s.framePath, params);
     if (s.action === "click") out.push(`  await ${loc}.click();`);
     if (s.action === "type") out.push(`  await ${loc}.fill(${value});`);
     if (s.action === "select") out.push(`  await ${loc}.selectOption(${value});`);
     if (s.action === "submit") out.push(`  await ${loc}.evaluate((form) => form.requestSubmit());`);
   }
   if (s.expected.urlPath) {
-    out.push(`  await page.waitForURL((u) => u.origin + u.pathname === ${urlExpr(s.expected.urlPath, params)});`);
+    out.push(`  await page.waitForURL((u) => urlPathMatches(u.href, ${urlExpr(s.expected.urlPath, params)}));`);
   }
   return out;
 }

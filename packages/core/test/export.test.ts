@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exportPlaywright, locatorExpr } from "../src/export/playwright.js";
-import { paramsPreamble } from "../src/export/shared.js";
+import { paramsPreamble, URL_PATH_MATCH } from "../src/export/shared.js";
 import { exportStagehand } from "../src/export/stagehand.js";
-import type { Workflow } from "../src/types.js";
+import type { Locator, Workflow } from "../src/types.js";
 import { compiledFixture } from "./fixtures.js";
 
 function assertValidModule(source: string): void {
@@ -36,7 +36,7 @@ describe("exportPlaywright", () => {
     expect(src).toContain('await page.goto("https://app.test/invoices");');
     expect(src).toContain('await page.getByTestId("new-invoice").click();');
     expect(src).toContain('await page.getByRole("textbox", { name: "Customer", exact: true }).fill(params["param_1"]);');
-    expect(src).toContain('await page.waitForURL((u) => u.origin + u.pathname === "https://app.test/invoices/new");');
+    expect(src).toContain('await page.waitForURL((u) => urlPathMatches(u.href, "https://app.test/invoices/new"));');
     assertValidModule(src);
   });
 });
@@ -79,30 +79,14 @@ function navWorkflow(example: string, url: string, urlPath?: string): Workflow {
   return w;
 }
 
-function optionWorkflow(): Workflow {
-  const w = compiledFixture();
-  w.steps.push(
-    {
-      id: "opt",
-      name: 'Click option "Acme Corp"',
-      action: "click",
-      locator: { kind: "role", role: "option", name: "Acme Corp" },
-      fallbacks: [],
-      framePath: [],
-      expected: {},
-    },
-    {
-      id: "row",
-      name: 'Click [data-testid="row-Acme Corp"]',
-      action: "click",
-      locator: { kind: "testId", testId: "row-Acme Corp" },
-      fallbacks: [],
-      framePath: [],
-      expected: {},
-    },
-  );
+function clickWorkflow(example: string, locator: Locator, fallbacks: Locator[] = []): Workflow {
+  const w = navWorkflow(example, "https://app.test/");
+  w.steps.push({ id: "click", name: "Click target", action: "click", locator, fallbacks, framePath: [], expected: {} });
   return w;
 }
+
+const acmeOption: Locator = { kind: "role", role: "option", name: "Acme Corp" };
+const acmeCss: Locator = { kind: "css", css: "[title='Acme Corp']" };
 
 const enc = 'encodeURIComponent(params["param_1"])';
 
@@ -164,25 +148,78 @@ describe.each([
   });
 });
 
-describe("locator text substitution", () => {
-  it("references the param in Playwright locators", () => {
-    const src = exportPlaywright(optionWorkflow());
-    expect(src).toContain('await page.getByRole("option", { name: params["param_1"], exact: true }).click();');
-    expect(src).toContain('await page.getByTestId("row-" + params["param_1"]).click();');
+describe("Playwright locator params", () => {
+  const roleLine = 'await page.getByRole("option", { name: params["param_1"], exact: true }).click();';
+
+  it("substitutes inside role names", () => {
+    const src = exportPlaywright(clickWorkflow("Acme Corp", acmeOption));
+    expect(src).toContain(roleLine);
     expect(src).not.toContain("Acme");
     assertValidModule(src);
   });
 
-  it("uses act() variables in Stagehand instructions", () => {
-    const src = exportStagehand(optionWorkflow());
-    expect(src).toContain(
-      'await stagehand.act("click the \\"%param_1%\\" option", { variables: { "param_1": params["param_1"] } });',
+  it("never substitutes inside testId, css or xpath", () => {
+    expect(exportPlaywright(clickWorkflow("new", { kind: "testId", testId: "new-invoice" }))).toContain(
+      'await page.getByTestId("new-invoice").click();',
     );
-    expect(src).toContain(
-      'await stagehand.act("click the element with test id \\"row-%param_1%\\"", { variables: { "param_1": params["param_1"] } });',
+    expect(exportPlaywright(clickWorkflow("Acme Corp", acmeCss))).toContain(
+      `await page.locator("[title='Acme Corp']").click();`,
     );
+  });
+
+  it("prefers a role fallback when the primary locator embeds an example", () => {
+    const src = exportPlaywright(clickWorkflow("Acme Corp", acmeCss, [{ kind: "xpath", xpath: "//x" }, acmeOption]));
+    expect(src).toContain(roleLine);
     expect(src).not.toContain("Acme");
     assertValidModule(src);
+  });
+});
+
+describe("Stagehand runtime targets", () => {
+  const actLine = 'await stagehand.act("click the \\"" + params["param_1"] + "\\" option");';
+  const notice = "  // Sends the value of param_1 to your LLM provider at run time\n";
+
+  it("builds the act() instruction from the param value at run time", () => {
+    const src = exportStagehand(clickWorkflow("Acme Corp", acmeOption));
+    expect(src).toContain(`${notice}  ${actLine}`);
+    expect(src).not.toContain("Acme");
+    expect(src).not.toContain("%param_1%");
+    assertValidModule(src);
+  });
+
+  it("applies the same locator choice as Playwright", () => {
+    expect(exportStagehand(clickWorkflow("Acme Corp", acmeCss, [acmeOption]))).toContain(actLine);
+    const literal = exportStagehand(clickWorkflow("new", { kind: "testId", testId: "new-invoice" }));
+    expect(literal).toContain('await stagehand.act("click the element with test id \\"new-invoice\\"");');
+    expect(literal).not.toContain("LLM provider");
+  });
+
+  it("keeps typed values in act() variables", () => {
+    const src = exportStagehand(compiledFixture());
+    expect(src).toContain(
+      'await stagehand.act("type %param_1% into the \\"Customer\\" textbox", { variables: { "param_1": params["param_1"] } });',
+    );
+  });
+});
+
+describe("URL_PATH_MATCH", () => {
+  const urlPathMatches = new Function(`${URL_PATH_MATCH}\nreturn urlPathMatches;`)() as (a: string, e: string) => boolean;
+
+  it("compares origins and decoded path segments", () => {
+    const expected = "https://app.test/c/" + encodeURIComponent("Smith, John");
+    expect(urlPathMatches("https://app.test/c/Smith,%20John", expected)).toBe(true);
+    expect(urlPathMatches("https://app.test/c/Smith,%20John?x=1#h", expected)).toBe(true);
+    expect(urlPathMatches("https://app.test/c/Smith", expected)).toBe(false);
+    expect(urlPathMatches("https://other.test/c/Smith,%20John", expected)).toBe(false);
+  });
+
+  it("is emitted once and used by both exporters", () => {
+    for (const src of [exportPlaywright(compiledFixture()), exportStagehand(compiledFixture())]) {
+      expect(src.split("function urlPathMatches(").length).toBe(2);
+      expect(src).toContain('urlPathMatches(');
+      assertValidModule(src);
+    }
+    expect(exportStagehand(compiledFixture())).toContain("if (urlPathMatches(current, expected)) return;");
   });
 });
 
