@@ -9,7 +9,16 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./types": { "types": "./dist/types.d.ts", "default": "./dist/types.js" },
+    "./schema": { "types": "./dist/schema.d.ts", "default": "./dist/schema.js" },
+    "./redact": { "types": "./dist/redact.d.ts", "default": "./dist/redact.js" },
+    "./compile": { "types": "./dist/compile.d.ts", "default": "./dist/compile.js" },
+    "./enrich": { "types": "./dist/enrich.d.ts", "default": "./dist/enrich.js" },
+    "./llm": { "types": "./dist/llm.d.ts", "default": "./dist/llm.js" },
+    "./license": { "types": "./dist/license.d.ts", "default": "./dist/license.js" },
+    "./export": { "types": "./dist/export/index.d.ts", "default": "./dist/export/index.js" },
+    "./store": { "types": "./dist/store.d.ts", "default": "./dist/store.js" }
   },
   "files": ["dist"],
   "scripts": {

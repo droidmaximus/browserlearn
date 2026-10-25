@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   ExpectedState,
   Locator,
@@ -178,7 +177,7 @@ export interface CompileOptions {
 }
 
 export function compileRecording(rec: Recording, rawSteps: RawStep[], opts: CompileOptions): Workflow {
-  const newId = opts.newId ?? randomUUID;
+  const newId = opts.newId ?? (() => globalThis.crypto.randomUUID());
   const workflowId = newId();
   const steps = collapseSteps(rawSteps);
   const out: WorkflowStep[] = [];
