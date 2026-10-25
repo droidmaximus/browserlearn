@@ -2,7 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 import { type FieldRule, redactRecording, safeRedactStep } from "./redact.js";
 import type { RawStep, Recording, Run, StoredLicense, Workflow } from "./types.js";
 
-const SCHEMA = `
+/** Migration i brings the database from user_version i to i + 1. Append only; never edit a shipped entry. */
+const MIGRATIONS = [
+  `
 CREATE TABLE IF NOT EXISTS recordings (id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS steps (
   recording_id TEXT NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
@@ -14,7 +16,8 @@ CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, u
 CREATE INDEX IF NOT EXISTS workflows_name ON workflows(name);
 CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, started_at INTEGER NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS license (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);
-`;
+`,
+];
 
 function parseOne<T>(row: unknown): T | undefined {
   return row ? (JSON.parse((row as { data: string }).data) as T) : undefined;
@@ -29,8 +32,32 @@ export class Store {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA busy_timeout = 5000;");
+    if (path !== ":memory:" && path !== "") this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
-    this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  private version(): number {
+    return (this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  }
+
+  private migrate(): void {
+    if (this.version() > MIGRATIONS.length) {
+      throw new Error(`database schema version ${this.version()} is newer than this BrowserLearn supports (${MIGRATIONS.length})`);
+    }
+    if (this.version() === MIGRATIONS.length) return;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (let v = this.version(); v < MIGRATIONS.length; v++) {
+        this.db.exec(MIGRATIONS[v]!);
+        this.db.exec(`PRAGMA user_version = ${v + 1}`);
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
   }
 
   close(): void {
@@ -49,7 +76,7 @@ export class Store {
   }
 
   listRecordings(): Recording[] {
-    return parseAll(this.db.prepare("SELECT data FROM recordings ORDER BY started_at DESC").all());
+    return parseAll(this.db.prepare("SELECT data FROM recordings ORDER BY started_at DESC, rowid DESC").all());
   }
 
   finishRecording(id: string, endedAt: number): Recording {
@@ -95,25 +122,25 @@ export class Store {
 
   getWorkflowByName(name: string): Workflow | undefined {
     return parseOne(
-      this.db.prepare("SELECT data FROM workflows WHERE name = ? ORDER BY updated_at DESC LIMIT 1").get(name),
+      this.db.prepare("SELECT data FROM workflows WHERE name = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1").get(name),
     );
   }
 
   listWorkflows(): Workflow[] {
-    return parseAll(this.db.prepare("SELECT data FROM workflows ORDER BY updated_at DESC").all());
+    return parseAll(this.db.prepare("SELECT data FROM workflows ORDER BY updated_at DESC, rowid DESC").all());
   }
 
   saveRun(run: Run): void {
     this.db
       .prepare(
         `INSERT INTO runs (id, workflow_id, started_at, data) VALUES (?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+         ON CONFLICT(id) DO UPDATE SET workflow_id = excluded.workflow_id, started_at = excluded.started_at, data = excluded.data`,
       )
       .run(run.id, run.workflowId, run.startedAt, JSON.stringify(run));
   }
 
   listRuns(workflowId: string): Run[] {
-    return parseAll(this.db.prepare("SELECT data FROM runs WHERE workflow_id = ? ORDER BY started_at DESC").all(workflowId));
+    return parseAll(this.db.prepare("SELECT data FROM runs WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC").all(workflowId));
   }
 
   getLicense(): StoredLicense | undefined {

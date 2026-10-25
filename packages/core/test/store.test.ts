@@ -1,3 +1,8 @@
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Store } from "../src/store.js";
 import type { RawStep } from "../src/types.js";
@@ -79,6 +84,94 @@ it("upserts runs", () => {
   expect(store.listRuns("id1")).toEqual([
     { id: "r1", workflowId: "id1", params: {}, status: "failed", failedStep: 2, log: ["x"], startedAt: 1, endedAt: 5 },
   ]);
+});
+
+it("moves a run to its new workflow and start time on upsert", () => {
+  store.saveRun({ id: "r1", workflowId: "id1", params: {}, status: "running", log: [], startedAt: 1 });
+  store.saveRun({ id: "r2", workflowId: "id2", params: {}, status: "running", log: [], startedAt: 5 });
+  store.saveRun({ id: "r1", workflowId: "id2", params: {}, status: "running", log: [], startedAt: 9 });
+  expect(store.listRuns("id1")).toEqual([]);
+  expect(store.listRuns("id2").map((r) => r.id)).toEqual(["r1", "r2"]);
+});
+
+it("lists the most recently inserted first when timestamps tie", () => {
+  for (const id of ["a", "b", "c"]) store.createRecording({ ...openRecording, id });
+  expect(store.listRecordings().map((r) => r.id)).toEqual(["c", "b", "a"]);
+  for (const id of ["w1", "w2"]) store.saveWorkflow({ ...compiledFixture(), id });
+  expect(store.listWorkflows().map((w) => w.id)).toEqual(["w2", "w1"]);
+  expect(store.getWorkflowByName("Create invoice")?.id).toBe("w2");
+  for (const id of ["r1", "r2"]) store.saveRun({ id, workflowId: "w1", params: {}, status: "running", log: [], startedAt: 1 });
+  expect(store.listRuns("w1").map((r) => r.id)).toEqual(["r2", "r1"]);
+});
+
+describe("database file", () => {
+  let dir: string;
+  let file: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "bl-store-"));
+    file = join(dir, "browserlearn.db");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const pragma = (name: string): unknown => {
+    const db = new DatabaseSync(file);
+    try {
+      return Object.values(db.prepare(`PRAGMA ${name}`).get() as object)[0];
+    } finally {
+      db.close();
+    }
+  };
+
+  it("records schema version 1 and uses WAL", () => {
+    new Store(file).close();
+    expect(pragma("user_version")).toBe(1);
+    expect(pragma("journal_mode")).toBe("wal");
+  });
+
+  it("keeps data across reopen without re-running migrations", () => {
+    const first = new Store(file);
+    first.createRecording(openRecording);
+    first.close();
+    const again = new Store(file);
+    expect(again.getRecording("rec1")).toEqual(openRecording);
+    again.close();
+    expect(pragma("user_version")).toBe(1);
+  });
+
+  it("refuses a database from a newer version", () => {
+    new Store(file).close();
+    const db = new DatabaseSync(file);
+    db.exec("PRAGMA user_version = 99");
+    db.close();
+    expect(() => new Store(file)).toThrow(/schema version 99/);
+  });
+
+  it("waits for another process's write lock instead of failing", async () => {
+    new Store(file).close();
+    const holder = spawn(
+      process.execPath,
+      [
+        "--no-warnings",
+        "--input-type=module",
+        "-e",
+        `import { DatabaseSync } from "node:sqlite";
+         const db = new DatabaseSync(process.argv[1]);
+         db.exec("BEGIN IMMEDIATE");
+         console.log("locked");
+         setTimeout(() => { db.exec("COMMIT"); db.close(); }, 300);`,
+        file,
+      ],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
+    await new Promise<void>((resolve) => holder.stdout.once("data", () => resolve()));
+    const s = new Store(file);
+    try {
+      expect(() => s.createRecording(openRecording)).not.toThrow();
+    } finally {
+      s.close();
+      await new Promise((resolve) => holder.once("exit", resolve));
+    }
+  });
 });
 
 it("stores a single license", () => {
