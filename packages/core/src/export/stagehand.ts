@@ -1,17 +1,35 @@
 import type { Locator, ParamDef, Workflow, WorkflowStep } from "../types.js";
-import { checkStepParams, commentText, noLocatorLine, paramRef, q, scriptHeader, urlExpr } from "./shared.js";
+import {
+  checkStepParams,
+  chunkParams,
+  chunksText,
+  locatorText,
+  noLocatorLine,
+  paramRef,
+  q,
+  scriptHeader,
+  stepComment,
+  textChunks,
+  urlExpr,
+} from "./shared.js";
 
-function actTarget(l: Locator): string {
+function describeTarget(l: Locator, text: string): string {
   switch (l.kind) {
     case "testId":
-      return `element with test id "${l.testId}"`;
+      return `element with test id "${text}"`;
     case "role":
-      return `"${l.name}" ${l.role}`;
+      return `"${text}" ${l.role}`;
     case "css":
-      return `element matching "${l.css}"`;
+      return `element matching "${text}"`;
     case "xpath":
-      return `element at xpath "${l.xpath}"`;
+      return `element at xpath "${text}"`;
   }
+}
+
+/** The act() target, with examples in the locator text replaced by `%name%` variables. */
+function actTarget(l: Locator, params: ParamDef[]): { target: string; vars: string[] } {
+  const chunks = textChunks(locatorText(l), params);
+  return { target: describeTarget(l, chunksText(chunks, (name) => `%${name}%`)), vars: chunkParams(chunks) };
 }
 
 const EXPECT_URL = [
@@ -29,20 +47,23 @@ const EXPECT_URL = [
 
 function actionLine(s: WorkflowStep, params: ParamDef[]): string {
   if (s.action === "navigate") return `  await page.goto(${urlExpr(s.url ?? "", params)});`;
-  if (!s.locator) return noLocatorLine(s, params);
-  const target = actTarget(s.locator);
-  const vars = s.param ? `, { variables: { ${q(s.param)}: ${paramRef(s.param)} } }` : "";
+  if (!s.locator) return noLocatorLine(s);
+  const { target, vars } = actTarget(s.locator, params);
+  const names = [...new Set([...(s.param ? [s.param] : []), ...vars])];
+  const variables = names.length
+    ? `, { variables: { ${names.map((n) => `${q(n)}: ${paramRef(n)}`).join(", ")} } }`
+    : "";
   const instruction = {
     click: `click the ${target}`,
     type: `type %${s.param}% into the ${target}`,
     select: `select %${s.param}% in the ${target}`,
     submit: `submit the ${target}`,
   }[s.action];
-  return `  await stagehand.act(${q(instruction)}${vars});`;
+  return `  await stagehand.act(${q(instruction)}${variables});`;
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
-  const out = [`  // ${commentText(s.name, params)}`, actionLine(s, params)];
+  const out = [`  // ${stepComment(s, params)}`, actionLine(s, params)];
   if (s.expected.urlPath) out.push(`  await expectUrl(${urlExpr(s.expected.urlPath, params)});`);
   return out;
 }

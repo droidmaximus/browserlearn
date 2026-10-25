@@ -1,29 +1,40 @@
 import type { Locator, ParamDef, Workflow, WorkflowStep } from "../types.js";
-import { checkStepParams, commentText, noLocatorLine, paramRef, q, scriptHeader, urlExpr } from "./shared.js";
+import {
+  checkStepParams,
+  chunksExpr,
+  noLocatorLine,
+  paramRef,
+  q,
+  scriptHeader,
+  stepComment,
+  textChunks,
+  urlExpr,
+} from "./shared.js";
 
-export function locatorExpr(l: Locator, framePath: number[]): string {
+export function locatorExpr(l: Locator, framePath: number[], params: ParamDef[] = []): string {
   const base = framePath.reduce((acc, i) => `${acc}.frameLocator(${q(`iframe >> nth=${i}`)})`, "page");
+  const text = (s: string): string => chunksExpr(textChunks(s, params));
   switch (l.kind) {
     case "testId":
-      return `${base}.getByTestId(${q(l.testId)})`;
+      return `${base}.getByTestId(${text(l.testId)})`;
     case "role":
-      return `${base}.getByRole(${q(l.role)}, { name: ${q(l.name)}, exact: true })`;
+      return `${base}.getByRole(${q(l.role)}, { name: ${text(l.name)}, exact: true })`;
     case "css":
-      return `${base}.locator(${q(l.css)})`;
+      return `${base}.locator(${text(l.css)})`;
     case "xpath":
-      return `${base}.locator(${q(`xpath=${l.xpath}`)})`;
+      return `${base}.locator(${chunksExpr([{ text: "xpath=" }, ...textChunks(l.xpath, params)])})`;
   }
 }
 
 function stepLines(s: WorkflowStep, params: ParamDef[]): string[] {
-  const out = [`  // ${commentText(s.name, params)}`];
+  const out = [`  // ${stepComment(s, params)}`];
   const value = paramRef(s.param ?? "");
   if (s.action === "navigate") {
     out.push(`  await page.goto(${urlExpr(s.url ?? "", params)});`);
   } else if (!s.locator) {
-    out.push(noLocatorLine(s, params));
+    out.push(noLocatorLine(s));
   } else {
-    const loc = locatorExpr(s.locator, s.framePath);
+    const loc = locatorExpr(s.locator, s.framePath, params);
     if (s.action === "click") out.push(`  await ${loc}.click();`);
     if (s.action === "type") out.push(`  await ${loc}.fill(${value});`);
     if (s.action === "select") out.push(`  await ${loc}.selectOption(${value});`);

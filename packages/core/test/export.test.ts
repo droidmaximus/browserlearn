@@ -62,26 +62,89 @@ describe("exportStagehand", () => {
   });
 });
 
-function searchWorkflow(): Workflow {
+function navWorkflow(example: string, url: string, urlPath?: string): Workflow {
   const w = compiledFixture();
-  const url = "https://app.test/search?q=Acme%20Corp";
-  w.steps[0] = { ...w.steps[0]!, name: `Open ${url}`, url, expected: { urlPath: "https://app.test/c/ACME+corp" } };
+  w.params = [{ name: "param_1", description: "", required: true, secret: false, example }];
+  w.steps = [
+    {
+      id: "nav",
+      name: `Open ${url}`,
+      action: "navigate",
+      url,
+      fallbacks: [],
+      framePath: [],
+      expected: urlPath ? { urlPath } : {},
+    },
+  ];
   return w;
 }
+
+function optionWorkflow(): Workflow {
+  const w = compiledFixture();
+  w.steps.push(
+    {
+      id: "opt",
+      name: 'Click option "Acme Corp"',
+      action: "click",
+      locator: { kind: "role", role: "option", name: "Acme Corp" },
+      fallbacks: [],
+      framePath: [],
+      expected: {},
+    },
+    {
+      id: "row",
+      name: 'Click [data-testid="row-Acme Corp"]',
+      action: "click",
+      locator: { kind: "testId", testId: "row-Acme Corp" },
+      fallbacks: [],
+      framePath: [],
+      expected: {},
+    },
+  );
+  return w;
+}
+
+const enc = 'encodeURIComponent(params["param_1"])';
 
 describe.each([
   ["playwright", exportPlaywright],
   ["stagehand", exportStagehand],
 ])("%s export of param-bearing URLs", (_name, exporter) => {
-  it("references params instead of embedding the example", () => {
-    const src = exporter(searchWorkflow());
-    expect(src).not.toMatch(/acme/i);
-    expect(src).toContain(
-      'await page.goto("https://app.test/search?q=" + encodeURIComponent(params["param_1"]));',
-    );
-    expect(src).toContain('"https://app.test/c/" + encodeURIComponent(params["param_1"])');
-    expect(src).toContain("// Open https://app.test/search?q={param_1}");
+  it("substitutes exact whole path segments and query values only", () => {
+    const src = exporter(navWorkflow("Acme Corp", "https://app.test/c/Acme%20Corp?q=Acme+Corp", "https://app.test/c/Acme%20Corp"));
+    expect(src).not.toContain("Acme");
+    expect(src).toContain(`await page.goto("https://app.test/c/" + ${enc} + "?q=" + ${enc});`);
+    expect(src).toContain(`"https://app.test/c/" + ${enc})`);
+    expect(src).toContain("// Open https://app.test/c/{param_1}?q={param_1}");
     assertValidModule(src);
+  });
+
+  it("never touches the host or case-mismatched segments", () => {
+    expect(exporter(navWorkflow("test", "https://app.test/invoices/new"))).toContain(
+      'await page.goto("https://app.test/invoices/new");',
+    );
+    const mismatch = exporter(navWorkflow("Acme Corp", "https://app.test/c/ACME+corp"));
+    expect(mismatch).toContain('await page.goto("https://app.test/c/ACME+corp");');
+    expect(mismatch).not.toContain("encodeURIComponent");
+  });
+
+  it("substitutes every whole-value query match but not partial values", () => {
+    expect(exporter(navWorkflow("new", "https://app.test/s?q=new&sort=new"))).toContain(
+      `await page.goto("https://app.test/s?q=" + ${enc} + "&sort=" + ${enc});`,
+    );
+    expect(exporter(navWorkflow("new", "https://app.test/invoices/new?q=newest"))).toContain(
+      `await page.goto("https://app.test/invoices/" + ${enc} + "?q=newest");`,
+    );
+  });
+
+  it("leaves unparseable URLs as a single literal", () => {
+    expect(exporter(navWorkflow("Acme Corp", "not a url Acme Corp"))).toContain('await page.goto("not a url Acme Corp");');
+  });
+
+  it("leaves non-navigate step names and the header alone", () => {
+    const w = navWorkflow("new", "https://app.test/");
+    w.name = "Create new invoice";
+    expect(exporter(w)).toContain('workflow "Create new invoice"');
   });
 
   it("rejects type steps without a known param at export time", () => {
@@ -98,6 +161,28 @@ describe.each([
     const src = exporter(compiledFixture());
     expect(src).toContain("Parameters must be a JSON object");
     expect(src).toContain("must be a string");
+  });
+});
+
+describe("locator text substitution", () => {
+  it("references the param in Playwright locators", () => {
+    const src = exportPlaywright(optionWorkflow());
+    expect(src).toContain('await page.getByRole("option", { name: params["param_1"], exact: true }).click();');
+    expect(src).toContain('await page.getByTestId("row-" + params["param_1"]).click();');
+    expect(src).not.toContain("Acme");
+    assertValidModule(src);
+  });
+
+  it("uses act() variables in Stagehand instructions", () => {
+    const src = exportStagehand(optionWorkflow());
+    expect(src).toContain(
+      'await stagehand.act("click the \\"%param_1%\\" option", { variables: { "param_1": params["param_1"] } });',
+    );
+    expect(src).toContain(
+      'await stagehand.act("click the element with test id \\"row-%param_1%\\"", { variables: { "param_1": params["param_1"] } });',
+    );
+    expect(src).not.toContain("Acme");
+    assertValidModule(src);
   });
 });
 
