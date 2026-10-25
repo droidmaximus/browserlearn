@@ -1,6 +1,7 @@
 import { exportCmd, listCmd, pairCmd } from "./commands/basic.js";
 import { mcpCmd } from "./commands/mcp.js";
 import { runCmd } from "./commands/run.js";
+import { startCmd } from "./commands/start.js";
 import { errorMessage } from "./errors.js";
 import { type Io, processIo } from "./io.js";
 import { VERSION } from "./version.js";
@@ -20,6 +21,7 @@ Commands:
 `;
 
 const COMMANDS: Record<string, Command> = {
+  start: startCmd,
   pair: pairCmd,
   list: listCmd,
   export: exportCmd,
