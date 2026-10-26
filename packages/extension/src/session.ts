@@ -13,7 +13,7 @@ export interface ChromeLite {
     request: (p: { origins: string[] }) => Promise<boolean>;
     contains: (p: { origins: string[] }) => Promise<boolean>;
   };
-  scripting: { executeScript: (opts: { target: { tabId: number; allFrames?: boolean }; files: string[] }) => Promise<unknown> };
+  scripting: { executeScript: (opts: { target: { tabId: number; allFrames?: boolean }; files?: string[]; func?: () => unknown }) => Promise<unknown> };
   alarmApi: { create: (name: string, info: chrome.alarms.AlarmCreateInfo) => Promise<void>; clear: (name: string) => Promise<boolean> };
   action: {
     setBadgeText: (d: { text: string }) => Promise<void>;
@@ -151,14 +151,18 @@ export function createSession(opts: {
       client.connect();
     },
     async start(name: string) {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      const tab =
+        tabs.find((t) => t.active && t.url && !t.url.startsWith("chrome-extension://")) ??
+        [...tabs].reverse().find((t) => t.url?.startsWith("http"));
       if (!tab?.id || !tab.url) throw new Error("No active tab to record.");
       if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
         throw new Error("Open a regular web page, then press Record.");
       }
       const origin = originOf(tab.url);
-      const ok = await chrome.permissions.request({ origins: [`${origin}/*`] });
-      if (!ok) throw new Error("Permission to record this site was denied.");
+      const granted = await chrome.permissions.contains({ origins: [`${origin}/*`] });
+      const injectable = granted || (await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => true }).then(() => true, () => false));
+      if (!injectable) throw new Error("Permission to record this site was denied.");
       const recording: Recording = {
         id: uuid(),
         name: name.trim() || tab.title || "Untitled recording",

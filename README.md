@@ -18,6 +18,7 @@ See [packages/cli/README.md](packages/cli/README.md) for setup and MCP configura
 
 - `packages/cli`: the `browserlearn` local app: dashboard, MCP server, and runner
 - `packages/core`: redaction, compiler, exporters, and storage
+- `packages/extension`: Chrome MV3 extension (load unpacked from `packages/extension/dist`)
 
 ## License
 

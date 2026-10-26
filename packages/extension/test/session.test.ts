@@ -13,9 +13,10 @@ describe("recording session", () => {
       client: { notify: () => notified.push(1), connect: () => undefined, disconnect: () => undefined },
     });
     await session.pair("token", 7420);
+    await chrome.permissions.request({ origins: ["https://app.test/*"] });
     const started = await session.start("Create invoice");
     expect(started.recordingId).toBe("rec-1");
-    expect([...chrome.granted]).toEqual(["https://app.test/*"]);
+    expect(chrome.granted.has("https://app.test/*")).toBe(true);
     expect(chrome.injected[0]).toMatchObject({ tabId: 1, files: ["content.js"], allFrames: true });
     expect(chrome.alarms).toContain("browserlearn.keepalive");
     session.handleCaptured({
@@ -54,6 +55,7 @@ describe("recording session", () => {
       client: { notify: () => undefined, connect: () => undefined, disconnect: () => undefined },
     });
     await session.pair("t", 7420);
+    await chrome.permissions.request({ origins: ["https://app.test/*"] });
     await session.start("T");
     await session.onCommitted({ tabId: 1, frameId: 0, url: "https://app.test/saved" });
     const nav = session.queue().items.find((m) => m.type === "step" && m.step.action === "navigate");

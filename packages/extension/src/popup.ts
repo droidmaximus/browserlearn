@@ -42,7 +42,22 @@ saveBtn.addEventListener("click", async () => {
   render(await send({ type: "pair", token: tokenEl.value, port: Number(portEl.value) }));
   tokenEl.value = "";
 });
-recordBtn.addEventListener("click", async () => render(await send({ type: "start", name: nameEl.value })));
+recordBtn.addEventListener("click", async () => {
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const tab =
+    tabs.find((t) => t.active && t.url && !t.url.startsWith("chrome-extension://")) ??
+    [...tabs].reverse().find((t) => t.url?.startsWith("http"));
+  const origin = tab?.url ? new URL(tab.url).origin : "";
+  if (origin.startsWith("http")) {
+    const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+    if (!granted) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent = "Permission to record this site was denied.";
+      return;
+    }
+  }
+  render(await send({ type: "start", name: nameEl.value }));
+});
 stopBtn.addEventListener("click", async () => render(await send({ type: "stop" })));
 
 void refresh();

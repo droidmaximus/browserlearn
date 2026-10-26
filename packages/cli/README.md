@@ -10,7 +10,7 @@ Everything runs on your machine. Recordings are redacted before they are saved, 
 npx browserlearn
 ```
 
-Open the dashboard link it prints, go to **Settings**, and paste the pairing code into the BrowserLearn Chrome extension. Then press **Record** in the extension, do the task, and press **Stop**. A workflow appears under **Workflows**.
+Open the dashboard link it prints, go to **Settings**, and paste the pairing code into the BrowserLearn Chrome extension. Load the unpacked extension from `packages/extension/dist` (see that package’s README). Then press **Record** in the extension, do the task, and press **Stop**. A workflow appears under **Workflows**.
 
 Requires Node.js 22.13 or newer. Running workflows uses your installed Google Chrome; without Chrome, run `npx playwright install chromium` once.
 
