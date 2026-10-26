@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "npm run build --workspace @browserlearn/core && tsc -p tsconfig.test.json && vitest run"
+    "test": "npm run build --workspace @browserlearn/core && npm run build && tsc -p tsconfig.test.json && vitest run"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.6",

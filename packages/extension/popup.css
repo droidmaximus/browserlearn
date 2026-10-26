@@ -1,0 +1,7 @@
+body { font: 13px/1.4 system-ui, sans-serif; width: 280px; margin: 0; padding: 12px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+label { display: block; margin: 8px 0 4px; }
+input { width: 100%; box-sizing: border-box; }
+button { margin-right: 6px; margin-top: 8px; }
+#status[data-kind="error"] { color: #b00020; }
+#status[data-kind="ok"] { color: #0b6; }
