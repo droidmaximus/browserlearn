@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "BrowserLearn",
+  "version": "0.1.0",
+  "description": "Record a browser task for your AI agent. Recordings stay on your machine.",
+  "action": { "default_popup": "popup.html", "default_title": "BrowserLearn" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "tabs", "scripting", "webNavigation", "alarms", "activeTab"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": []
+}
