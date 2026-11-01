@@ -1,8 +1,9 @@
 import { verifyLicense } from "@browserlearn/core/license";
 import type { App } from "./app.js";
 
+/** Must match the backend LICENSE_PRIVATE_KEY (see services/backend). */
 export const LICENSE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAS5SpLx4mekFzionLC0no2qMFr+ZKV84O1B2+kmTFOkw=
+MCowBQYDK2VwAyEAqRGguM6BdasAPjwEWWpKMWVulHj+GyAj3qkG6JKpD0s=
 -----END PUBLIC KEY-----
 `;
 

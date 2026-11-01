@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { FieldRule } from "@browserlearn/core/redact";
 
 export interface LlmSettings {
+  /** Use `"hosted"` for BrowserLearn hosted compiles (Pro). */
   baseUrl: string;
   model: string;
   apiKey?: string;
@@ -17,6 +18,8 @@ export interface Config {
   port: number;
   fieldRules: FieldRule[];
   llm?: LlmSettings;
+  /** BrowserLearn backend base URL for claim / hosted compile. */
+  backendUrl?: string;
 }
 
 export interface Paths {
@@ -40,7 +43,8 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 export function checkLlmSettings(v: unknown): LlmSettings {
   if (!isRecord(v)) throw new Error("invalid llm settings");
   const { baseUrl, model, apiKey, timeoutMs } = v;
-  if (typeof baseUrl !== "string" || !/^https?:\/\/[^\s]+$/.test(baseUrl)) throw new Error("invalid llm.baseUrl: use an http(s) URL");
+  if (typeof baseUrl !== "string") throw new Error("invalid llm.baseUrl: use an http(s) URL or \"hosted\"");
+  if (baseUrl !== "hosted" && !/^https?:\/\/[^\s]+$/.test(baseUrl)) throw new Error("invalid llm.baseUrl: use an http(s) URL or \"hosted\"");
   if (typeof model !== "string" || !model.trim()) throw new Error("invalid llm.model");
   if (apiKey !== undefined && typeof apiKey !== "string") throw new Error("invalid llm.apiKey");
   if (timeoutMs !== undefined && (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
@@ -81,12 +85,18 @@ function parseConfig(text: string, file: string): Config {
       bad((err as Error).message.replace(/^invalid /, ""));
     }
   }
+  let backendUrl: string | undefined;
+  if (v.backendUrl !== undefined) {
+    if (typeof v.backendUrl !== "string" || !/^https?:\/\/[^\s]+$/.test(v.backendUrl)) bad("backendUrl");
+    backendUrl = (v.backendUrl as string).replace(/\/+$/, "");
+  }
   return {
     installId: v.installId as string,
     pairToken: v.pairToken as string,
     port: port as number,
     fieldRules: fieldRules as FieldRule[],
     ...(llm ? { llm } : {}),
+    ...(backendUrl ? { backendUrl } : {}),
   };
 }
 

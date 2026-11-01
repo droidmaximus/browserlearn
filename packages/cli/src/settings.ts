@@ -8,6 +8,7 @@ export interface SettingsView {
   fieldRules: FieldRule[];
   pairToken: string;
   installId: string;
+  backendUrl: string | null;
 }
 
 export function settingsView(app: App): SettingsView {
@@ -19,6 +20,7 @@ export function settingsView(app: App): SettingsView {
     fieldRules: app.config.fieldRules,
     pairToken: app.config.pairToken,
     installId: app.config.installId,
+    backendUrl: app.config.backendUrl ?? null,
   };
 }
 
@@ -50,6 +52,16 @@ export function applySettings(config: Config, input: unknown): Config {
       throw new ValidationError("Each redaction rule needs a domain and a field");
     }
     next.fieldRules = rules.map((r) => ({ domain: String(r.domain).trim(), field: String(r.field).trim() }));
+  }
+  if ("backendUrl" in input) {
+    if (input.backendUrl === null || input.backendUrl === "") {
+      const { backendUrl: _removed, ...rest } = next;
+      next = rest;
+    } else if (typeof input.backendUrl === "string" && /^https?:\/\/[^\s]+$/.test(input.backendUrl)) {
+      next.backendUrl = input.backendUrl.replace(/\/+$/, "");
+    } else {
+      throw new ValidationError("backendUrl must be an http(s) URL");
+    }
   }
   return next;
 }

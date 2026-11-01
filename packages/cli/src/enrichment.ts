@@ -2,11 +2,16 @@ import { applyEnrichment, buildEnrichmentPayload, parseEnrichment } from "@brows
 import { type LlmClient, openAiCompatibleClient } from "@browserlearn/core/llm";
 import type { Workflow } from "@browserlearn/core/types";
 import type { App } from "./app.js";
+import { hostedLlmClient } from "./backend.js";
 import type { LlmSettings } from "./config.js";
 import { errorMessage, HttpError } from "./errors.js";
 
-export function llmClientFor(settings: LlmSettings | undefined, fetchImpl?: typeof fetch): LlmClient {
+export function llmClientFor(settings: LlmSettings | undefined, fetchImpl?: typeof fetch, app?: App): LlmClient {
   if (!settings) throw new HttpError(409, "Set up an LLM in Settings first");
+  if (settings.baseUrl === "hosted") {
+    if (!app) throw new HttpError(409, "Hosted compiles require the local app");
+    return hostedLlmClient(app, fetchImpl ?? fetch);
+  }
   return openAiCompatibleClient({ ...settings, ...(fetchImpl ? { fetchImpl } : {}) });
 }
 

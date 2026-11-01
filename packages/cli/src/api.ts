@@ -5,6 +5,7 @@ import type { Workflow } from "@browserlearn/core/types";
 import type { App } from "./app.js";
 import { newToken } from "./config.js";
 import { applyPatch, parsePatch } from "./edit.js";
+import { claimLicense } from "./backend.js";
 import { enrichSaved, llmClientFor } from "./enrichment.js";
 import { errorMessage, HttpError, NotFoundError, ValidationError } from "./errors.js";
 import { tokensEqual } from "./ingest.js";
@@ -123,7 +124,7 @@ export function createApiHandler(app: App, deps: ApiDeps): (req: IncomingMessage
       const w = workflowOr404(params.id!);
       const b = await body();
       const user = isRecord(b) && typeof b.user === "string" ? b.user : undefined;
-      return enrichSaved(app, w, llmClientFor(app.config.llm, deps.fetchImpl), user);
+      return enrichSaved(app, w, llmClientFor(app.config.llm, deps.fetchImpl, app), user);
     }],
     ["GET", new RegExp(`^/api/workflows/${ID}/export$`), ({ params, url }) => {
       const format = url.searchParams.get("format");
@@ -154,6 +155,16 @@ export function createApiHandler(app: App, deps: ApiDeps): (req: IncomingMessage
       try {
         return activateLicense(app, b.token);
       } catch (err) {
+        throw new ValidationError(errorMessage(err));
+      }
+    }],
+    ["POST", /^\/api\/license\/claim$/, async ({ body }) => {
+      const b = await body();
+      if (!isRecord(b) || typeof b.code !== "string" || !b.code.trim()) throw new ValidationError("code is required");
+      try {
+        return await claimLicense(app, b.code, deps.fetchImpl ?? fetch);
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
         throw new ValidationError(errorMessage(err));
       }
     }],
