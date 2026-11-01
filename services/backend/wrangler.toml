@@ -1,0 +1,12 @@
+name = "browserlearn-backend"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "browserlearn"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# Secrets (wrangler secret put): LICENSE_PRIVATE_KEY, POLAR_WEBHOOK_SECRET, ANTHROPIC_API_KEY
+# Vars: POLAR_PRODUCT_ID
