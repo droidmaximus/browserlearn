@@ -242,15 +242,8 @@ async function renderWorkflow(id) {
   );
 }
 
-function licenseSummary(l) {
-  if (l.status === "active") return h("p", {}, `Pro, active until ${fmtTime(l.expiresAt)}.`);
-  if (l.status === "grace") return notice(`Your Pro license expired on ${fmtTime(l.expiresAt)}. It keeps working for 14 days after that; refresh it soon.`, "warn");
-  if (l.status === "inactive") return notice(`License not valid (${l.reason}).`, "error");
-  return h("p", {}, "Free plan.");
-}
-
 async function renderSettings() {
-  const [s, license] = await Promise.all([api("GET", "/settings"), api("GET", "/license")]);
+  const s = await api("GET", "/settings");
 
   const baseUrl = h("input", { value: s.llm?.baseUrl ?? "", placeholder: "https://api.openai.com/v1", "aria-label": "LLM base URL" });
   const model = h("input", { value: s.llm?.model ?? "", placeholder: "gpt-4o-mini", "aria-label": "Model" });
@@ -289,8 +282,6 @@ async function renderSettings() {
     flash("Redaction rules saved.");
   });
 
-  const licenseArea = h("textarea", { rows: 3, "aria-label": "License key", placeholder: "Paste your license key" });
-
   view.replaceChildren(
     h("h2", {}, "Settings"),
     h("section", {},
@@ -325,23 +316,6 @@ async function renderSettings() {
       h("p", {}, "Values typed into matching fields are masked before anything is saved. Emails, phone numbers, cards, keys and passwords are always masked."),
       rulesBox,
       h("div", { class: "row" }, h("button", { class: "primary", onclick: saveRules }, "Save rules")),
-    ),
-    h("section", {},
-      h("h3", {}, "License"),
-      licenseSummary(license),
-      h("p", {}, "Install ID: ", h("code", {}, license.installId)),
-      licenseArea,
-      h("div", { class: "row" },
-        h("button", {
-          class: "primary",
-          onclick: guard(async () => {
-            await api("POST", "/license", { token: licenseArea.value });
-            await renderSettings();
-            flash("License activated.");
-          }),
-        }, "Activate"),
-        license.status === "none" ? null : h("button", { onclick: guard(async () => { await api("DELETE", "/license"); await renderSettings(); }) }, "Remove license"),
-      ),
     ),
   );
 }

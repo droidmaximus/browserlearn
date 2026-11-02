@@ -1,13 +1,11 @@
 import { Store } from "@browserlearn/core/store";
 import { type Config, loadConfig, type Paths, resolvePaths, saveConfig } from "./config.js";
-import { LICENSE_PUBLIC_KEY_PEM } from "./license.js";
 
 export interface App {
   paths: Paths;
   config: Config;
   store: Store;
   now(): number;
-  publicKeyPem: string;
   saveConfig(next: Config): void;
   close(): void;
 }
@@ -15,7 +13,6 @@ export interface App {
 export interface OpenAppOptions {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
-  publicKeyPem?: string;
 }
 
 export function openApp(opts: OpenAppOptions = {}): App {
@@ -26,7 +23,6 @@ export function openApp(opts: OpenAppOptions = {}): App {
     config,
     store: new Store(paths.db),
     now: opts.now ?? Date.now,
-    publicKeyPem: opts.publicKeyPem ?? LICENSE_PUBLIC_KEY_PEM,
     saveConfig(next) {
       saveConfig(paths, next);
       app.config = next;

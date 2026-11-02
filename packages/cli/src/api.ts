@@ -5,11 +5,9 @@ import type { Workflow } from "@browserlearn/core/types";
 import type { App } from "./app.js";
 import { newToken } from "./config.js";
 import { applyPatch, parsePatch } from "./edit.js";
-import { claimLicense } from "./backend.js";
 import { enrichSaved, llmClientFor } from "./enrichment.js";
 import { errorMessage, HttpError, NotFoundError, ValidationError } from "./errors.js";
 import { tokensEqual } from "./ingest.js";
-import { activateLicense, clearLicense, licenseView } from "./license.js";
 import type { RunOutcome } from "./runner.js";
 import { executeRun, runReport } from "./runs.js";
 import { applySettings, settingsView } from "./settings.js";
@@ -94,7 +92,6 @@ export function createApiHandler(app: App, deps: ApiDeps): (req: IncomingMessage
       version: VERSION,
       extensionConnected: deps.ingest.connected > 0,
       llmConfigured: app.config.llm !== undefined,
-      license: licenseView(app),
     })],
     ["GET", /^\/api\/recordings$/, () => app.store.listRecordings().map((r) => ({ ...r, stepCount: app.store.listSteps(r.id).length }))],
     ["GET", new RegExp(`^/api/recordings/${ID}$`), ({ params }) => {
@@ -124,7 +121,7 @@ export function createApiHandler(app: App, deps: ApiDeps): (req: IncomingMessage
       const w = workflowOr404(params.id!);
       const b = await body();
       const user = isRecord(b) && typeof b.user === "string" ? b.user : undefined;
-      return enrichSaved(app, w, llmClientFor(app.config.llm, deps.fetchImpl, app), user);
+      return enrichSaved(app, w, llmClientFor(app.config.llm, deps.fetchImpl), user);
     }],
     ["GET", new RegExp(`^/api/workflows/${ID}/export$`), ({ params, url }) => {
       const format = url.searchParams.get("format");
@@ -147,30 +144,6 @@ export function createApiHandler(app: App, deps: ApiDeps): (req: IncomingMessage
     ["POST", /^\/api\/pair\/reset$/, () => {
       app.saveConfig({ ...app.config, pairToken: newToken() });
       return { pairToken: app.config.pairToken };
-    }],
-    ["GET", /^\/api\/license$/, () => licenseView(app)],
-    ["POST", /^\/api\/license$/, async ({ body }) => {
-      const b = await body();
-      if (!isRecord(b) || typeof b.token !== "string") throw new ValidationError("token is required");
-      try {
-        return activateLicense(app, b.token);
-      } catch (err) {
-        throw new ValidationError(errorMessage(err));
-      }
-    }],
-    ["POST", /^\/api\/license\/claim$/, async ({ body }) => {
-      const b = await body();
-      if (!isRecord(b) || typeof b.code !== "string" || !b.code.trim()) throw new ValidationError("code is required");
-      try {
-        return await claimLicense(app, b.code, deps.fetchImpl ?? fetch);
-      } catch (err) {
-        if (err instanceof HttpError) throw err;
-        throw new ValidationError(errorMessage(err));
-      }
-    }],
-    ["DELETE", /^\/api\/license$/, () => {
-      clearLicense(app);
-      return licenseView(app);
     }],
   ];
 

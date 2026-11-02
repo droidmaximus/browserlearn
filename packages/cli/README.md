@@ -1,8 +1,8 @@
-# BrowserLearn
+# BrowserLearn (local app)
 
-Record a browser task once. Your AI agent can then run it through MCP, or you can export it as a Playwright or Stagehand script.
+Record a browser task once. Your AI agent can run it through MCP, or you can export Playwright or Stagehand scripts.
 
-Everything runs on your machine. Recordings are redacted before they are saved, and what you type never leaves your computer.
+Everything runs on your machine. Recordings are redacted before they are saved; typed values never leave your computer unless you choose to send an anonymized outline to an LLM you configure.
 
 ## Start
 
@@ -10,7 +10,13 @@ Everything runs on your machine. Recordings are redacted before they are saved, 
 npx browserlearn
 ```
 
-Open the dashboard link it prints, go to **Settings**, and paste the pairing code into the BrowserLearn Chrome extension. Load the unpacked extension from `packages/extension/dist` (see that package’s README). Then press **Record** in the extension, do the task, and press **Stop**. A workflow appears under **Workflows**.
+From a git checkout of this monorepo (after `npm install` and building core + cli):
+
+```bash
+node packages/cli/dist/bin.js
+```
+
+Open the dashboard link it prints. Go to **Settings**, copy the pairing code, and paste it into the BrowserLearn Chrome extension. Load the unpacked extension from `packages/extension/dist` (see that package’s README). Then press **Record** in the extension, do the task, and press **Stop**. A workflow appears under **Workflows**.
 
 Requires Node.js 22.13 or newer. Running workflows uses your installed Google Chrome; without Chrome, run `npx playwright install chromium` once.
 
@@ -26,7 +32,7 @@ Add BrowserLearn to your MCP client, for example Claude Code or Cursor:
 }
 ```
 
-The agent gets four tools: `list_workflows`, `get_workflow`, `run_workflow`, and `search_recordings`. Values you typed while recording are never included, unless you turn on "Show recorded example values to AI agents" for a workflow.
+The agent gets four tools: `list_workflows`, `get_workflow`, `run_workflow`, and `search_recordings`. Values you typed while recording are never included, unless you turn on “Show recorded example values to AI agents” for a workflow.
 
 ## Command line
 

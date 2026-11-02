@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { IngestStatus } from "./protocol.js";
 import { type FieldRule, redactRecording, safeRedactStep } from "./redact.js";
-import type { RawStep, Recording, Run, StoredLicense, Workflow } from "./types.js";
+import type { RawStep, Recording, Run, Workflow } from "./types.js";
 
 /** Migration i brings the database from user_version i to i + 1. Append only; never edit a shipped entry. */
 const MIGRATIONS = [
@@ -18,6 +18,7 @@ CREATE INDEX IF NOT EXISTS workflows_name ON workflows(name);
 CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, started_at INTEGER NOT NULL, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS license (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL);
 `,
+  `DROP TABLE IF EXISTS license;`,
 ];
 
 function parseOne<T>(row: unknown): T | undefined {
@@ -173,19 +174,5 @@ export class Store {
 
   listRuns(workflowId: string): Run[] {
     return parseAll(this.db.prepare("SELECT data FROM runs WHERE workflow_id = ? ORDER BY started_at DESC, rowid DESC").all(workflowId));
-  }
-
-  getLicense(): StoredLicense | undefined {
-    return parseOne(this.db.prepare("SELECT data FROM license WHERE id = 1").get());
-  }
-
-  setLicense(l: StoredLicense): void {
-    this.db
-      .prepare("INSERT INTO license (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data")
-      .run(JSON.stringify(l));
-  }
-
-  clearLicense(): void {
-    this.db.prepare("DELETE FROM license").run();
   }
 }

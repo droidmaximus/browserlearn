@@ -2,7 +2,6 @@ export * from "./types.js";
 export * from "./schema.js";
 export * from "./redact.js";
 export * from "./compile.js";
-export * from "./license.js";
 export * from "./llm.js";
 export * from "./enrich.js";
 export * from "./export/index.js";

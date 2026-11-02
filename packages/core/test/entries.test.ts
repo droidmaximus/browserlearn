@@ -8,7 +8,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   exports: Record<string, { types: string; default: string }>;
 };
 
-const SUBPATHS = [".", "./types", "./schema", "./redact", "./compile", "./enrich", "./llm", "./license", "./export", "./store", "./public", "./resolve", "./protocol"];
+const SUBPATHS = [".", "./types", "./schema", "./redact", "./compile", "./enrich", "./llm", "./export", "./store", "./public", "./resolve", "./protocol"];
 
 const sourceOf = (distFile: string): string => join(root, distFile.replace(/^\.\/dist\//, "src/").replace(/\.js$/, ".ts"));
 
@@ -46,8 +46,8 @@ describe("package entry points", () => {
     }
   });
 
-  it("loads only node:crypto from Node builtins in the root entry, and only via license", () => {
-    expect([...builtinsReachedFrom(sourceOf(pkg.exports["."]!.default))]).toEqual(["node:crypto"]);
+  it("keeps Node builtins out of the root entry and pure subpaths", () => {
+    expect([...builtinsReachedFrom(sourceOf(pkg.exports["."]!.default))]).toEqual([]);
     for (const subpath of ["./redact", "./compile", "./enrich", "./llm", "./schema", "./export", "./types"]) {
       expect([...builtinsReachedFrom(sourceOf(pkg.exports[subpath]!.default))], subpath).toEqual([]);
     }

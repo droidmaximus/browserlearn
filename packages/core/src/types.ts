@@ -99,11 +99,3 @@ export interface Run {
   startedAt: number;
   endedAt?: number;
 }
-
-export interface StoredLicense {
-  token: string;
-  plan: "pro";
-  installId: string;
-  expiresAt: number;
-  lastRefreshedAt: number;
-}

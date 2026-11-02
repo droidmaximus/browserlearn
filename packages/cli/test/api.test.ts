@@ -1,5 +1,4 @@
 import { request } from "node:http";
-import { generateLicenseKeyPair, signLicense } from "@browserlearn/core/license";
 import { afterEach, describe, expect, it } from "vitest";
 import { type ApiDeps, createApiHandler } from "../src/api.js";
 import type { App } from "../src/app.js";
@@ -9,7 +8,6 @@ import { seedRecording, testApp } from "./helpers.js";
 
 const TOKEN = "dashboard-token";
 const NOW = 1_700_000_000_000;
-const keys = generateLicenseKeyPair();
 const llmReply = {
   name: "Create a customer invoice",
   description: "Creates an invoice for a customer.",
@@ -31,7 +29,7 @@ describe("dashboard API", () => {
   });
 
   async function setup(extra: Partial<ApiDeps> = {}) {
-    app = testApp({ publicKeyPem: keys.publicKeyPem, now: () => NOW });
+    app = testApp({ now: () => NOW });
     const fetchImpl = (async (_url: string, init: RequestInit) => {
       llmCalls.push(JSON.parse(String(init.body)).messages[1].content);
       if (llmFails) return new Response("down", { status: 503 });
@@ -63,7 +61,7 @@ describe("dashboard API", () => {
     expect((await api("GET", "/status", undefined, "wrong")).status).toBe(401);
     const status = await api("GET", "/status");
     expect(status.status).toBe(200);
-    expect(status.body).toMatchObject({ extensionConnected: false, llmConfigured: false, license: { status: "none" } });
+    expect(status.body).toMatchObject({ extensionConnected: false, llmConfigured: false });
     expect(status.headers.get("cache-control")).toBe("no-store");
   });
 
@@ -182,11 +180,4 @@ describe("dashboard API", () => {
     expect((await api("GET", "/settings")).body.pairToken).toBe(res.body.pairToken);
   });
 
-  it("activates and removes licenses", async () => {
-    await setup();
-    const token = signLicense({ plan: "pro", installId: app.config.installId, issuedAt: NOW, expiresAt: NOW + 1000 }, keys.privateKeyPem);
-    expect((await api("POST", "/license", { token: "junk" })).status).toBe(400);
-    expect((await api("POST", "/license", { token })).body).toMatchObject({ status: "active", expiresAt: NOW + 1000 });
-    expect((await api("DELETE", "/license")).body.status).toBe("none");
-  });
 });

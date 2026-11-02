@@ -122,9 +122,9 @@ describe("database file", () => {
     }
   };
 
-  it("records schema version 1 and uses WAL", () => {
+  it("records schema version 2 and uses WAL", () => {
     new Store(file).close();
-    expect(pragma("user_version")).toBe(1);
+    expect(pragma("user_version")).toBe(2);
     expect(pragma("journal_mode")).toBe("wal");
   });
 
@@ -135,7 +135,7 @@ describe("database file", () => {
     const again = new Store(file);
     expect(again.getRecording("rec1")).toEqual(openRecording);
     again.close();
-    expect(pragma("user_version")).toBe(1);
+    expect(pragma("user_version")).toBe(2);
   });
 
   it("refuses a database from a newer version", () => {
@@ -172,16 +172,6 @@ describe("database file", () => {
       await new Promise((resolve) => holder.once("exit", resolve));
     }
   });
-});
-
-it("stores a single license", () => {
-  expect(store.getLicense()).toBeUndefined();
-  const lic = { token: "t", plan: "pro" as const, installId: "i", expiresAt: 10, lastRefreshedAt: 1 };
-  store.setLicense(lic);
-  store.setLicense({ ...lic, token: "t2" });
-  expect(store.getLicense()?.token).toBe("t2");
-  store.clearLicense();
-  expect(store.getLicense()).toBeUndefined();
 });
 
 describe("store carry-overs", () => {
