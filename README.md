@@ -16,6 +16,7 @@ Recordings stay on your machine and are redacted before they are saved.
 ## Quick start (from this repo)
 
 ```bash
+git clone https://github.com/droidmaximus/browserlearn.git
 cd browserlearn
 npm install
 npm run build --workspace @browserlearn/core
@@ -23,6 +24,8 @@ npm run build --workspace browserlearn
 npm run build --workspace @browserlearn/extension
 node packages/cli/dist/bin.js
 ```
+
+Extension zip (Load unpacked): [v0.1.0 release](https://github.com/droidmaximus/browserlearn/releases/tag/v0.1.0).
 
 Then:
 
