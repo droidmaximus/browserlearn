@@ -1,9 +1,22 @@
 {
   "name": "browserlearn",
   "version": "0.1.0",
-  "description": "Record a browser task once; let your AI agent run it through MCP, or export it as Playwright or Stagehand code.",
+  "description": "Local-first browser agent training: record a Chrome task, compile workflows, run via MCP (Claude/Cursor) or export Playwright/Stagehand. Privacy-preserving MIT OSS.",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "browser-automation",
+    "mcp",
+    "model-context-protocol",
+    "playwright",
+    "stagehand",
+    "ai-agents",
+    "chrome-extension",
+    "local-first",
+    "privacy",
+    "claude",
+    "cursor"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/droidmaximus/browserlearn.git",

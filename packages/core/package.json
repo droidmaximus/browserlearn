@@ -1,9 +1,18 @@
 {
   "name": "@browserlearn/core",
   "version": "0.1.0",
-  "description": "Redaction, compiler, exporters, and storage for BrowserLearn.",
+  "description": "BrowserLearn core: local redaction, deterministic workflow compiler, Playwright/Stagehand exporters, and SQLite storage.",
   "type": "module",
   "license": "MIT",
+  "keywords": [
+    "browser-automation",
+    "playwright",
+    "stagehand",
+    "redaction",
+    "workflow-compiler",
+    "ai-agents",
+    "local-first"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/droidmaximus/browserlearn.git",

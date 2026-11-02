@@ -1,19 +1,28 @@
 # BrowserLearn
 
-Teach your AI agent a browser task by doing it once. Free and open source (MIT). Everything runs on your machine.
+**Browser agent training for developers** — record a real Chrome workflow once, compile it into a reusable parameterized skill, and run it from **MCP** clients (Claude Code, Cursor) or export **Playwright** / **Stagehand** scripts.
 
-1. **Record** a task in Chrome with the BrowserLearn extension.
-2. **Compile** it locally into a reusable workflow with parameters. No LLM is required.
-3. **Run** it from Claude Code, Cursor, or any MCP client — or export Playwright / Stagehand scripts.
+Free and open source (**MIT**). **Local-first** and **privacy-preserving**: recordings stay on your machine and are redacted before they are saved. No cloud account required.
 
-Recordings stay on your machine and are redacted before they are saved.
+| | |
+| --- | --- |
+| Record | Chrome MV3 extension captures clicks, types, selects, navigates |
+| Compile | Deterministic local compiler turns a recording into a workflow (optional LLM naming via BYOK / Ollama) |
+| Run | MCP tools, CLI runner, or exported automation code |
+
+## Why BrowserLearn
+
+- **Train browser agents by demonstration** — no hand-written selectors for every step
+- **Works with AI coding tools** — MCP server for Claude, Cursor, and other Model Context Protocol hosts
+- **Exports** — Playwright and Stagehand for teams that want code in git
+- **Private by default** — typed values and recordings never leave your machine; optional LLM enrichment sends only an anonymized skeleton you can preview
 
 ## Requirements
 
 - Node.js **22.13** or newer
-- Google Chrome (for recording and running workflows). Without Chrome, run `npx playwright install chromium` once for the runner.
+- Google Chrome (recording + runs). Without Chrome: `npx playwright install chromium` once for the runner
 
-## Quick start (from this repo)
+## Quick start
 
 ```bash
 git clone https://github.com/droidmaximus/browserlearn.git
@@ -27,26 +36,40 @@ node packages/cli/dist/bin.js
 
 Extension zip (Load unpacked): [v0.1.0 release](https://github.com/droidmaximus/browserlearn/releases/tag/v0.1.0).
 
-Then:
-
 1. Open the dashboard URL printed in the terminal.
-2. Load the unpacked extension from [`packages/extension/dist`](packages/extension/dist) (see [packages/extension/README.md](packages/extension/README.md)).
-3. In **Settings**, copy the pairing code into the extension popup.
-4. Open a normal website, press **Record**, do the task, press **Stop**.
+2. Load the unpacked extension from [`packages/extension/dist`](packages/extension/dist) — see [packages/extension/README.md](packages/extension/README.md).
+3. **Settings** → copy the pairing code into the extension popup.
+4. Open a normal website → **Record** → do the task → **Stop**.
 
-Full MCP setup, CLI commands, and optional LLM naming: [packages/cli/README.md](packages/cli/README.md).
+MCP setup, CLI, and optional LLM naming: [packages/cli/README.md](packages/cli/README.md).
+
+## MCP (Claude Code / Cursor)
+
+```json
+{
+  "mcpServers": {
+    "browserlearn": { "command": "npx", "args": ["-y", "browserlearn", "mcp"] }
+  }
+}
+```
+
+Tools: `list_workflows`, `get_workflow`, `run_workflow`, `search_recordings`.
 
 ## Packages
 
-- `packages/cli` — local app: dashboard, MCP server, runner (`npx browserlearn`)
-- `packages/core` — redaction, compiler, exporters, storage
-- `packages/extension` — Chrome MV3 extension (load unpacked from `dist`)
+- [`packages/cli`](packages/cli) — local app: dashboard, MCP server, runner (`browserlearn`)
+- [`packages/core`](packages/core) — redaction, compiler, exporters, SQLite storage
+- [`packages/extension`](packages/extension) — Chrome MV3 recorder (load unpacked from `dist`)
 
 ## Releases
 
-- **CLI / core:** publish `@browserlearn/core` then `browserlearn` to npm (`npm publish --workspace @browserlearn/core` / `--workspace browserlearn`) after `npm login`.
-- **Extension:** `npm run pack --workspace @browserlearn/extension` writes `packages/extension/release/browserlearn-extension.zip` for Load unpacked or a GitHub Release asset. Chrome Web Store upload is manual.
+- **CLI / core:** after `npm login`, publish `@browserlearn/core` then `browserlearn` so `npx browserlearn` works.
+- **Extension:** `npm run pack --workspace @browserlearn/extension` → `packages/extension/release/browserlearn-extension.zip`, or use the [GitHub Release](https://github.com/droidmaximus/browserlearn/releases) asset.
+
+## Keywords
+
+browser automation, browser agent, MCP, Model Context Protocol, Playwright, Stagehand, Chrome extension, AI agents, local-first, privacy, TypeScript, Claude, Cursor
 
 ## License
 
-MIT
+[MIT](LICENSE)
