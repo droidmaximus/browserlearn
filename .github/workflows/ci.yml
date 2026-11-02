@@ -15,4 +15,8 @@ jobs:
           node-version: "22.13"
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+      - name: Test
+        # Extension e2e launches headed Chromium (MV3 service workers); xvfb provides a display.
+        run: xvfb-run -a npm test
