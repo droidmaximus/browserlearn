@@ -1,8 +1,18 @@
 {
   "name": "@browserlearn/core",
   "version": "0.1.0",
+  "description": "Redaction, compiler, exporters, and storage for BrowserLearn.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/droidmaximus/browserlearn.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/droidmaximus/browserlearn#readme",
+  "bugs": {
+    "url": "https://github.com/droidmaximus/browserlearn/issues"
+  },
   "engines": {
     "node": ">=22.13"
   },
@@ -25,6 +35,10 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
     "test": "tsc -p tsconfig.test.json && vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

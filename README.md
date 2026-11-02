@@ -39,6 +39,11 @@ Full MCP setup, CLI commands, and optional LLM naming: [packages/cli/README.md](
 - `packages/core` — redaction, compiler, exporters, storage
 - `packages/extension` — Chrome MV3 extension (load unpacked from `dist`)
 
+## Releases
+
+- **CLI / core:** publish `@browserlearn/core` then `browserlearn` to npm (`npm publish --workspace @browserlearn/core` / `--workspace browserlearn`) after `npm login`.
+- **Extension:** `npm run pack --workspace @browserlearn/extension` writes `packages/extension/release/browserlearn-extension.zip` for Load unpacked or a GitHub Release asset. Chrome Web Store upload is manual.
+
 ## License
 
 MIT

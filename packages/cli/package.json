@@ -4,6 +4,15 @@
   "description": "Record a browser task once; let your AI agent run it through MCP, or export it as Playwright or Stagehand code.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/droidmaximus/browserlearn.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/droidmaximus/browserlearn#readme",
+  "bugs": {
+    "url": "https://github.com/droidmaximus/browserlearn/issues"
+  },
   "engines": {
     "node": ">=22.13"
   },
@@ -13,6 +22,7 @@
   "files": ["dist", "public"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build --workspace @browserlearn/core && npm run build",
     "test": "npm run build --workspace @browserlearn/core && npm run build && tsc -p tsconfig.test.json && vitest run"
   },
   "dependencies": {

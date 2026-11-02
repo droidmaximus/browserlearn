@@ -6,3 +6,5 @@ AGENTS.md
 .superpowers/
 node_modules/
 dist/
+
+packages/extension/release/
