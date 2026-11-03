@@ -5,12 +5,13 @@ describe("content script wiring", () => {
     vi.resetModules();
     const sendMessage = vi.fn();
     (globalThis as unknown as { chrome: unknown }).chrome = { runtime: { sendMessage } };
-    await import("../src/content.js");
     document.body.innerHTML = `<button id="go">Go</button>`;
+    await import("../src/content.js");
     document.getElementById("go")!.click();
-    expect(sendMessage).toHaveBeenCalled();
-    const payload = sendMessage.mock.calls[0]![0] as { type: string; captured: { action: string } };
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    const payload = sendMessage.mock.calls[0]![0] as { type: string; captured: { action: string; axSnippet: string } };
     expect(payload.type).toBe("captured");
     expect(payload.captured.action).toBe("click");
+    expect(JSON.parse(payload.captured.axSnippet).v).toBe(1);
   });
 });
