@@ -61,6 +61,10 @@ Tools: `list_workflows`, `get_workflow`, `run_workflow`, `search_recordings`.
 - [`packages/core`](packages/core) — redaction, compiler, exporters, SQLite storage
 - [`packages/extension`](packages/extension) — Chrome MV3 recorder (load unpacked from `dist`)
 
+## Agent skills (Agensi)
+
+Instruction pack for Claude Code, Cursor, Copilot, and other agents: install/pair, run workflows via MCP, and export Playwright/Stagehand. Source lives in [`skills/agensi`](skills/agensi). Free to list on [Agensi](https://www.agensi.io/r/MAXIMUS); BrowserLearn itself stays MIT with no paywall.
+
 ## Releases
 
 - **CLI / core:** after `npm login`, publish `@browserlearn/core` then `browserlearn` so `npx browserlearn` works.
