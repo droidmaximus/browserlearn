@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { axSnippetFor, captureFromEvent, framePathOf, isPasswordField, selectorsFor, valueOf } from "../src/capture.js";
+import {
+  atomicSnapshotFor,
+  captureFromEvent,
+  framePathOf,
+  isPasswordField,
+  microSettle,
+  selectorsFor,
+  valueOf,
+} from "../src/capture.js";
 
 function mount(html: string): HTMLElement {
   document.body.innerHTML = html;
@@ -59,11 +67,52 @@ describe("capture", () => {
     expect(submit.action).toBe("submit");
   });
 
-  it("builds a trimmed AX snippet around the target", () => {
-    mount(`<main><form><button id="save">Save</button><button>Cancel</button></form></main>`);
-    const snippet = axSnippetFor(document.getElementById("save")!);
-    expect(snippet).toContain("Save");
-    expect(snippet.length).toBeLessThanOrEqual(2000);
+  it("settles 200ms for combobox change and 2 rAFs for click", async () => {
+    const sleeps: number[] = [];
+    const rafs: FrameRequestCallback[] = [];
+    mount(`<select id="plan"><option>Pro</option></select><button id="go">Go</button>`);
+    const sel = document.getElementById("plan")!;
+    await microSettle(new Event("change"), sel, {
+      sleep: async (ms) => void sleeps.push(ms),
+      raf: (cb) => {
+        rafs.push(cb);
+        queueMicrotask(() => cb(0));
+        return 0;
+      },
+    });
+    expect(sleeps).toEqual([200]);
+    const before = rafs.length;
+    await microSettle(new Event("click"), document.getElementById("go")!, {
+      sleep: async () => undefined,
+      raf: (cb) => {
+        rafs.push(cb);
+        queueMicrotask(() => cb(0));
+        return 0;
+      },
+    });
+    expect(rafs.length - before).toBeGreaterThanOrEqual(2);
+  });
+
+  it("packs visible controls into axSnippet JSON without password values", () => {
+    mount(`<main>
+      <label for="pw">Password</label><input id="pw" type="password" value="hunter2" />
+      <label for="customer">Customer</label><input id="customer" value="Acme" />
+      <button id="save">Save</button>
+    </main>`);
+    const save = document.getElementById("save")!;
+    const raw = atomicSnapshotFor(save);
+    expect(raw.length).toBeLessThanOrEqual(4000);
+    const snip = JSON.parse(raw) as { v: number; target: { name?: string }; controls: { name?: string }[] };
+    expect(snip.v).toBe(1);
+    expect(snip.target.name).toBe("Save");
+    expect(JSON.stringify(snip)).not.toContain("hunter2");
+    expect(snip.controls.some((c) => c.name === "Customer")).toBe(true);
+  });
+
+  it("captureFromEvent axSnippet is versioned JSON", () => {
+    mount(`<button id="go">Go</button>`);
+    const c = fire(document.getElementById("go")!, "click")!;
+    expect(JSON.parse(c.axSnippet).v).toBe(1);
   });
 
   it("computes a frame path of iframe indexes from the top", () => {

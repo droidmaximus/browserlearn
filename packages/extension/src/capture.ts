@@ -64,6 +64,34 @@ export function isPasswordField(el: Element): boolean {
   return el.type === "password" || auto === "current-password" || auto === "new-password";
 }
 
+export function isComboboxLike(el: Element): boolean {
+  if (el instanceof HTMLSelectElement) return true;
+  if (el.getAttribute("role") === "combobox") return true;
+  if (el instanceof HTMLInputElement) {
+    if (el.list) return true;
+    const auto = (el.getAttribute("aria-autocomplete") || "").toLowerCase();
+    return auto === "list" || auto === "both";
+  }
+  return false;
+}
+
+export async function microSettle(
+  ev: Event,
+  el: Element,
+  opts?: { raf?: (cb: FrameRequestCallback) => number; sleep?: (ms: number) => Promise<void> },
+): Promise<void> {
+  const raf = opts?.raf ?? requestAnimationFrame.bind(globalThis);
+  const sleep = opts?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const waitFrames = async (n: number) => {
+    for (let i = 0; i < n; i++) await new Promise<void>((resolve) => raf(() => resolve()));
+  };
+  if (ev.type === "change" && isComboboxLike(el)) {
+    await sleep(200);
+    return;
+  }
+  await waitFrames(2);
+}
+
 function testIdOf(el: Element): string | undefined {
   for (const a of TEST_ID_ATTRS) {
     const v = el.getAttribute(a);
@@ -184,6 +212,99 @@ function isLandmark(el: Element): boolean {
   return LANDMARK.has(el.tagName) || (role !== null && LANDMARK_ROLES.has(role));
 }
 
+export const AX_SNIPPET_MAX = 4000;
+const CONTROL_CAP = 24;
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface SnapshotControl {
+  role?: string;
+  name?: string;
+  value?: string;
+  box: Box;
+}
+
+const INTERACTIVE_ROLES = new Set([
+  "button",
+  "link",
+  "textbox",
+  "combobox",
+  "checkbox",
+  "radio",
+  "spinbutton",
+  "slider",
+  "searchbox",
+  "switch",
+  "menuitem",
+  "tab",
+  "option",
+]);
+
+function boxOf(el: Element): Box | undefined {
+  const r = el.getBoundingClientRect();
+  // Layout-less test DOMs often report 0×0; keep a 1×1 stand-in so snapshots still include the control.
+  if (!(r.width > 0 && r.height > 0)) return { x: r.left, y: r.top, w: 1, h: 1 };
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+}
+
+function center(b: Box): { x: number; y: number } {
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+
+function inViewport(b: Box, win: Window): boolean {
+  const vw = win.innerWidth || 1e9;
+  const vh = win.innerHeight || 1e9;
+  return b.x + b.w > 0 && b.y + b.h > 0 && b.x < vw && b.y < vh;
+}
+
+function isHidden(el: Element): boolean {
+  if (el.getAttribute("aria-hidden") === "true") return true;
+  if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") return true;
+  if (el instanceof HTMLElement && el.hidden) return true;
+  const style = el.ownerDocument.defaultView?.getComputedStyle?.(el);
+  if (style && (style.display === "none" || style.visibility === "hidden")) return true;
+  return false;
+}
+
+function isCovered(el: Element, b: Box): boolean {
+  const doc = el.ownerDocument;
+  const c = center(b);
+  const top = typeof doc.elementFromPoint === "function" ? doc.elementFromPoint(c.x, c.y) : null;
+  if (!top) return false; // happy-dom / missing API: treat as not covered
+  return !(top === el || el.contains(top) || top.contains(el));
+}
+
+function isInteractive(el: Element): boolean {
+  const role = roleOf(el);
+  if (role && INTERACTIVE_ROLES.has(role)) return true;
+  const tag = el.tagName;
+  return tag === "BUTTON" || tag === "SELECT" || tag === "TEXTAREA" || tag === "A" || tag === "INPUT" || tag === "SUMMARY";
+}
+
+function toControl(el: Element): SnapshotControl | undefined {
+  const box = boxOf(el);
+  if (!box) return undefined;
+  const win = el.ownerDocument.defaultView;
+  if (!win || !inViewport(box, win) || isHidden(el) || isCovered(el, box)) return undefined;
+  if (!isInteractive(el)) return undefined;
+  const role = roleOf(el);
+  const name = nameOf(el);
+  const password = isPasswordField(el);
+  const value = password ? undefined : valueOf(el);
+  return {
+    ...(role ? { role } : {}),
+    ...(name ? { name } : {}),
+    ...(value !== undefined ? { value } : {}),
+    box,
+  };
+}
+
+/** Legacy plain-text snippet kept for callers; new captures use atomicSnapshotFor. */
 export function axSnippetFor(el: Element): string {
   const ancestors: string[] = [];
   let n = el.parentElement;
@@ -200,6 +321,53 @@ export function axSnippetFor(el: Element): string {
     .filter(Boolean)
     .join("\n")
     .slice(0, 2000);
+}
+
+export function atomicSnapshotFor(target: Element, root?: ParentNode): string {
+  try {
+    const scope = root ?? target.ownerDocument;
+    const targetCtrl = toControl(target) ?? (() => {
+      const box = boxOf(target) ?? { x: 0, y: 0, w: 1, h: 1 };
+      const role = roleOf(target);
+      const name = nameOf(target);
+      return {
+        ...(role ? { role } : {}),
+        ...(name ? { name } : {}),
+        box,
+      } satisfies SnapshotControl;
+    })();
+    const tCenter = center(targetCtrl.box);
+    const candidates: { el: Element; ctrl: SnapshotControl; dist: number }[] = [];
+    const nodes = scope.querySelectorAll("a,button,input,select,textarea,summary,[role]");
+    for (const el of nodes) {
+      if (el === target) continue;
+      const ctrl = toControl(el);
+      if (!ctrl) continue;
+      const c = center(ctrl.box);
+      const dist = Math.hypot(c.x - tCenter.x, c.y - tCenter.y);
+      candidates.push({ el, ctrl, dist });
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+    let controls = candidates.slice(0, CONTROL_CAP).map((c) => c.ctrl);
+    let payload: { v: 1; target: SnapshotControl | null; controls: SnapshotControl[] } = {
+      v: 1,
+      target: targetCtrl,
+      controls,
+    };
+    let raw = JSON.stringify(payload);
+    while (raw.length > AX_SNIPPET_MAX && controls.length > 0) {
+      controls = controls.slice(0, -1);
+      payload = { v: 1, target: targetCtrl, controls };
+      raw = JSON.stringify(payload);
+    }
+    if (raw.length > AX_SNIPPET_MAX) {
+      payload = { v: 1, target: { box: targetCtrl.box, ...(targetCtrl.role ? { role: targetCtrl.role } : {}), ...(targetCtrl.name ? { name: targetCtrl.name.slice(0, 40) } : {}) }, controls: [] };
+      raw = JSON.stringify(payload);
+    }
+    return raw.length <= AX_SNIPPET_MAX ? raw : JSON.stringify({ v: 1, target: null, controls: [] });
+  } catch {
+    return JSON.stringify({ v: 1, target: null, controls: [] });
+  }
 }
 
 export function valueOf(el: Element): string | undefined {
@@ -246,7 +414,7 @@ export function captureFromEvent(ev: Event, win: Window, now: () => number = Dat
   return {
     action,
     selectors: selectorsFor(el),
-    axSnippet: axSnippetFor(el),
+    axSnippet: atomicSnapshotFor(el),
     url: win.location.href,
     framePath: framePathOf(win),
     ...(password ? { isPassword: true } : {}),
