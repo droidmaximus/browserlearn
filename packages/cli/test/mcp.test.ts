@@ -30,6 +30,31 @@ describe("MCP server", () => {
     expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(["get_workflow", "list_workflows", "run_workflow", "search_recordings"]);
   });
 
+  it("declares all four boolean hints on every tool", async () => {
+    const client = await connected(testApp());
+    const byName = Object.fromEntries((await client.listTools()).tools.map((t) => [t.name, t.annotations]));
+    const hints = (a: (typeof byName)[string]) => ({
+      readOnlyHint: a?.readOnlyHint,
+      destructiveHint: a?.destructiveHint,
+      idempotentHint: a?.idempotentHint,
+      openWorldHint: a?.openWorldHint,
+    });
+    for (const name of ["list_workflows", "get_workflow", "search_recordings"] as const) {
+      expect(hints(byName[name]), name).toEqual({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+    }
+    expect(hints(byName.run_workflow)).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    });
+  });
+
   it("lists and gets workflows without recorded values", async () => {
     const app = testApp();
     compileAndSave(app, seedRecording(app));

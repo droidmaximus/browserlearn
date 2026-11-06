@@ -23,12 +23,20 @@ export function createMcpServer(app: App, deps: McpDeps = {}): McpServer {
   const run = deps.run ?? ((w: Workflow, params: unknown) => executeRun(app, w, params));
   const server = new McpServer({ name: "browserlearn", version: VERSION });
 
+  const readOnly = {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  } as const;
+
   server.registerTool(
     "list_workflows",
     {
       title: "List workflows",
       description: "List the browser workflows the user recorded with BrowserLearn. Each has a name, a description, and its parameters as JSON Schema.",
       inputSchema: {},
+      annotations: readOnly,
     },
     async () => ok({ workflows: app.store.listWorkflows().map(workflowSummary) }),
   );
@@ -39,6 +47,7 @@ export function createMcpServer(app: App, deps: McpDeps = {}): McpServer {
       title: "Get workflow",
       description: "Get a workflow's full definition: its steps, target elements, expected pages, and parameters.",
       inputSchema: { name: z.string().describe("Workflow name from list_workflows") },
+      annotations: readOnly,
     },
     async ({ name }) => {
       const w = findWorkflow(app.store, name);
@@ -54,6 +63,12 @@ export function createMcpServer(app: App, deps: McpDeps = {}): McpServer {
       inputSchema: {
         name: z.string().describe("Workflow name from list_workflows"),
         params: z.record(z.string(), z.string()).optional().describe("Parameter values by name"),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
       },
     },
     async ({ name, params }) => {
@@ -74,6 +89,7 @@ export function createMcpServer(app: App, deps: McpDeps = {}): McpServer {
         query: z.string().min(1).describe("Text to look for"),
         limit: z.number().int().min(1).max(50).optional(),
       },
+      annotations: readOnly,
     },
     async ({ query, limit }) => ok({ recordings: searchRecordings(app.store, query, limit) }),
   );
