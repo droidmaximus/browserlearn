@@ -1,5 +1,7 @@
 # BrowserLearn
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/droidmaximus-browserlearn-ujmalj?v=796d65fec529bbdea401fd2e1689571d)](https://m8ven.ai/mcp/droidmaximus-browserlearn-ujmalj?s=readme)
+
 **Browser agent training for developers** — record a real Chrome workflow once, compile it into a reusable parameterized skill, and run it from **MCP** clients (Claude Code, Cursor) or export **Playwright** / **Stagehand** scripts.
 
 Free and open source (**MIT**). **Local-first** and **privacy-preserving**: recordings stay on your machine and are redacted before they are saved. No cloud account required.
