@@ -3,8 +3,9 @@
   "mcpServers": {
     "browserlearn": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "browserlearn", "mcp"],
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server/mcp.mjs"],
+      "cwd": "${PLUGIN_ROOT}/server",
       "extensions": {
         "com.openai": {
           "auth": {

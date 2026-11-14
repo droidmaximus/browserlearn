@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "browserlearn",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Record a Chrome task once and run it as a local browser agent workflow via MCP, or export Playwright and Stagehand scripts. Privacy-preserving and MIT open source.",
   "author": {
     "name": "droidmaximus",
@@ -58,7 +58,7 @@
         "commerce_description": "BrowserLearn is free MIT open-source software. This plugin does not sell products or process payments."
       },
       "publication": {
-        "release_notes": "0.1.4: use provided BrowserLearn app icon for logo and composerIcon; submit as MCP desktop-only (not Skills only)."
+        "release_notes": "0.1.5: desktop-only local MCP — bundled server under PLUGIN_ROOT/server (stdio), icons, skills; requires org allowlist for local MCP."
       }
     }
   }

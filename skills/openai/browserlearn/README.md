@@ -1,53 +1,47 @@
-# BrowserLearn — OpenAI Plugin package
+# BrowserLearn — OpenAI desktop-only MCP plugin
 
-Portable [Agent Plugins](https://developers.openai.com/plugins/build/plugins) package for ChatGPT / Codex: skills + local stdio MCP (`npx -y browserlearn mcp`).
+Local stdio MCP plugin for ChatGPT / Codex desktop. Skills + bundled BrowserLearn MCP runtime (no public HTTPS server).
 
 ## Layout
 
 ```text
 browserlearn/
 ├── plugin.json
-├── mcp.json
+├── mcp.json              # stdio → node ${PLUGIN_ROOT}/server/mcp.mjs
+├── server/               # vendored browserlearn + node_modules
+├── assets/
 ├── references/
 └── skills/
-    ├── get-started/
-    ├── setup/
-    ├── workflows/
-    └── export/
 ```
 
 ## Build the ZIP
 
-From the repo root:
+From the repo root (requires Node ≥ 22.13):
 
 ```bash
-cd skills/openai
-zip -r ../browserlearn-openai.zip browserlearn \
-  -x '*/.DS_Store' -x '*__MACOSX*' -x '*/.git/*'
+bash scripts/pack-openai-plugin.sh
 ```
 
-Upload `skills/browserlearn-openai.zip` in the [OpenAI plugin submission portal](https://developers.openai.com/plugins/deploy/submission).
+Output: `skills/browserlearn-openai.zip` (includes `server/node_modules` so reviewers can launch offline).
 
 ## Pre-submit checklist
 
-### 1. Listing URLs (done on `master`)
+### 1. Listing URLs (on `master`)
 
 - Privacy: https://github.com/droidmaximus/browserlearn/blob/master/docs/privacy.md
 - Terms: https://github.com/droidmaximus/browserlearn/blob/master/docs/terms.md
 
-### 2. OpenAI partner allowlisting (required for local MCP)
+### 2. OpenAI partner allowlisting (required)
 
-Local stdio MCP directory listings need org allowlisting ([desktop-only guide](https://developers.openai.com/plugins/deploy/desktop-only)):
+Local MCP listings need org allowlisting ([desktop-only guide](https://developers.openai.com/plugins/deploy/desktop-only)):
 
-1. Open [OpenAI org settings](https://platform.openai.com/settings/organization) and copy the **Organization ID**.
-2. Email your OpenAI representative (or Apps / plugin support) with:
+1. Copy **Organization ID** from [org settings](https://platform.openai.com/settings/organization).
+2. Email your OpenAI representative:
 
 ```text
 Subject: Allowlist org for local MCP plugin submission — BrowserLearn
 
-Hello,
-
-Please allowlist our OpenAI organization for local (stdio) MCP / desktop-only
+Please allowlist our organization for local (stdio) MCP / desktop-only
 plugin directory submissions.
 
 Organization ID: <PASTE_ORG_ID>
@@ -55,60 +49,27 @@ Plugin name: browserlearn
 Repository: https://github.com/droidmaximus/browserlearn
 Contact: bhojanapalliavinash@gmail.com
 
-We will submit via Skills only + Upload ZIP with root mcp.json (stdio:
-npx -y browserlearn mcp) and requires_local_executor: true.
+Package uses stdio MCP at ${PLUGIN_ROOT}/server/mcp.mjs and
+requires_local_executor: true.
 
 Thank you,
 droidmaximus
 ```
 
-3. Wait for confirmation, then in the portal choose **Create plugin → Skills only → Upload ZIP**.
+3. After confirmation, upload the ZIP per OpenAI’s local MCP instructions (documented as Skills only + Upload ZIP for approved local MCP orgs).
 
-### 3. `npx browserlearn` for reviewers
+### 3. Runtime on the reviewer machine
 
-Preferred (after npm publish):
-
-```bash
-npx -y browserlearn mcp
-```
-
-Reviewer local install (if npm is not published yet):
-
-```bash
-git clone https://github.com/droidmaximus/browserlearn.git
-cd browserlearn
-npm install
-npm run build --workspace @browserlearn/core
-npm run build --workspace browserlearn
-npm link --workspace browserlearn
-browserlearn mcp
-```
-
-Point a temporary MCP config at the git binary if needed:
-
-```json
-{
-  "mcpServers": {
-    "browserlearn": {
-      "command": "node",
-      "args": ["/absolute/path/to/browserlearn/packages/cli/dist/bin.js", "mcp"]
-    }
-  }
-}
-```
+- Node.js ≥ 22.13 on PATH (the `node` command in `mcp.json`)
+- Google Chrome for `run_workflow` (or `npx playwright install chromium` once)
+- Recordings stay in `~/.browserlearn`
 
 ### 4. Tool hints
 
-The MCP server declares all four hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) on every tool — required for OpenAI directory scans.
+The MCP server declares all four annotation hints on every tool.
 
-## Submission notes
+## Notes
 
-- BrowserLearn is **desktop-only** (`requires_local_executor: true`) because the MCP server is local stdio, not a public HTTPS endpoint.
-- **Do not choose Skills only** — OpenAI is not accepting new skills-only submissions. Upload a normal plugin ZIP that includes `mcp.json`, then follow [desktop-only / local MCP](https://developers.openai.com/plugins/deploy/desktop-only) (org allowlisting required).
-- App icons are in `assets/` (`logo` + `composerIcon`, with dark variants).
-- Do not put `review.test_cases` in `plugin.json` or under `mcpServers` for this layout; add cases in portal Review details if asked.
+- Not a remote “With MCP” HTTPS plugin — there is no cloud BrowserLearn endpoint.
 - Do not put secrets in the ZIP.
-
-## Other markets
-
-Agensi pack (separate ZIP): `skills/agensi` · https://www.agensi.io/r/MAXIMUS
+- Agensi pack (separate): `skills/agensi` · https://www.agensi.io/r/MAXIMUS

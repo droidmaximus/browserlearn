@@ -1,0 +1,14 @@
+{
+  "name": "browserlearn-openai-mcp",
+  "private": true,
+  "version": "0.1.5",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "description": "Vendored BrowserLearn MCP runtime for the OpenAI desktop-only plugin ZIP. Run scripts/pack-openai-plugin.sh before uploading.",
+  "dependencies": {
+    "@browserlearn/core": "0.1.0",
+    "browserlearn": "0.1.0"
+  }
+}

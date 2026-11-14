@@ -9,3 +9,5 @@ dist/
 
 packages/extension/release/
 skills/*.zip
+skills/openai/browserlearn/server/package-lock.json
+skills/openai/browserlearn/server/.stage/
