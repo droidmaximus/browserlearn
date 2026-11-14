@@ -27,6 +27,21 @@ Free and open source (**MIT**). **Local-first** and **privacy-preserving**: reco
 ## Quick start
 
 ```bash
+npx browserlearn
+```
+
+Packages on npm: [`browserlearn`](https://www.npmjs.com/package/browserlearn) and [`@browserlearn/core`](https://www.npmjs.com/package/@browserlearn/core) (`0.1.0`).
+
+Extension zip (Load unpacked): [v0.1.0 release](https://github.com/droidmaximus/browserlearn/releases/tag/v0.1.0).
+
+1. Open the dashboard URL printed in the terminal.
+2. Load the unpacked extension from the release zip (or build [`packages/extension/dist`](packages/extension/dist) from git — see [packages/extension/README.md](packages/extension/README.md)).
+3. **Settings** → copy the pairing code into the extension popup.
+4. Open a normal website → **Record** → do the task → **Stop**.
+
+From a git checkout instead of npm:
+
+```bash
 git clone https://github.com/droidmaximus/browserlearn.git
 cd browserlearn
 npm install
@@ -35,13 +50,6 @@ npm run build --workspace browserlearn
 npm run build --workspace @browserlearn/extension
 node packages/cli/dist/bin.js
 ```
-
-Extension zip (Load unpacked): [v0.1.0 release](https://github.com/droidmaximus/browserlearn/releases/tag/v0.1.0).
-
-1. Open the dashboard URL printed in the terminal.
-2. Load the unpacked extension from [`packages/extension/dist`](packages/extension/dist) — see [packages/extension/README.md](packages/extension/README.md).
-3. **Settings** → copy the pairing code into the extension popup.
-4. Open a normal website → **Record** → do the task → **Stop**.
 
 MCP setup, CLI, and optional LLM naming: [packages/cli/README.md](packages/cli/README.md).
 
@@ -69,8 +77,8 @@ Instruction pack for Claude Code, Cursor, Copilot, and other agents: install/pai
 
 ## Releases
 
-- **CLI / core:** after `npm login`, publish `@browserlearn/core` then `browserlearn` so `npx browserlearn` works.
-- **Extension:** `npm run pack --workspace @browserlearn/extension` → `packages/extension/release/browserlearn-extension.zip`, or use the [GitHub Release](https://github.com/droidmaximus/browserlearn/releases) asset.
+- **CLI / core (npm):** [`browserlearn@0.1.0`](https://www.npmjs.com/package/browserlearn) · [`@browserlearn/core@0.1.0`](https://www.npmjs.com/package/@browserlearn/core) — `npx browserlearn` / `npx -y browserlearn mcp`
+- **Extension:** [GitHub Release v0.1.0](https://github.com/droidmaximus/browserlearn/releases/tag/v0.1.0), or `npm run pack --workspace @browserlearn/extension` → `packages/extension/release/browserlearn-extension.zip`
 
 ## Keywords
 
