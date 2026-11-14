@@ -104,6 +104,7 @@ The MCP server declares all four hints (`readOnlyHint`, `destructiveHint`, `idem
 ## Submission notes
 
 - BrowserLearn is **desktop-only** (`requires_local_executor: true`) because the MCP server is local stdio, not a public HTTPS endpoint.
+- Upload via **Skills only**. Do not put `review.test_cases` in `plugin.json` or under `mcpServers` — OpenAI rejects both for this layout; add cases in the portal Review details if asked.
 - Do not put secrets in the ZIP.
 
 ## Other markets
